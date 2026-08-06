@@ -360,13 +360,23 @@ function EntryDetail({ entry, onRegen, onRemove, onToggleSubtask, onJumpToSubtas
                       {s.description && <div style={{ color: T.muted, fontSize: 10, marginTop: 1, lineHeight: 1.4 }}>{s.description}</div>}
                       {sr.length > 0 && (
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 4 }}>
-                          {sr.map((r, ri) => (
+                          {sr.map((r, ri) => {
+                            // trust_level 颜色：verified=绿，search_only=橙，无字段=蓝（旧数据）
+                            const tl = (r as unknown as { trust_level?: string }).trust_level;
+                            const tagColor = tl === "verified" ? "#2F5D50"
+                              : tl === "search_only" ? "#E07B2A" : T.accent;
+                            const tagBg = tl === "verified" ? "rgba(47,93,80,0.08)"
+                              : tl === "search_only" ? "rgba(224,123,42,0.08)" : "rgba(59,122,255,0.08)";
+                            const tagBorder = tl === "verified" ? "rgba(47,93,80,0.2)"
+                              : tl === "search_only" ? "rgba(224,123,42,0.2)" : "rgba(59,122,255,0.2)";
+                            return (
                             <span key={ri} onClick={(e) => { e.stopPropagation(); if (r.url) window.open(r.url, "_blank", "noopener"); else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener"); }}
-                              style={{ fontSize: 9, padding: "1px 6px", borderRadius: 4, background: "rgba(59,122,255,0.08)", color: T.accent, border: "1px solid rgba(59,122,255,0.2)", cursor: r.url || r.searchQuery ? "pointer" : "default", whiteSpace: "nowrap", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis" }}
+                              style={{ fontSize: 9, padding: "1px 6px", borderRadius: 4, background: tagBg, color: tagColor, border: `1px solid ${tagBorder}`, cursor: r.url || r.searchQuery ? "pointer" : "default", whiteSpace: "nowrap", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis" }}
                               title={r.url || r.searchQuery || r.title}>
-                              {r.type === "link" ? "🔗" : r.type === "search" ? "🔎" : r.type === "person" ? "👤" : "📚"} {r.title.slice(0, 12)}{r.title.length > 12 ? "…" : ""}
+                              {tl === "verified" ? "✓" : tl === "search_only" ? "🔎" : (r.type === "link" ? "🔗" : r.type === "search" ? "🔎" : r.type === "person" ? "👤" : "📚")} {r.title.slice(0, 12)}{r.title.length > 12 ? "…" : ""}
                             </span>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>

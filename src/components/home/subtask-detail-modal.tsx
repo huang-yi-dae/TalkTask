@@ -9,6 +9,28 @@ const T = {
   green: "#2F5D50", paper: "#F4F1EA", orange: "#E07B2A", purple: "#7C4DFF",
 } as const;
 
+// trust_level 颜色配置
+// verified  = 绿色边框 + 绿色标签：代码通过 Tavily 检索到的真实 URL
+// search_only = 黄色边框 + 黄色标签：搜索词，点击跳转搜索引擎
+const TRUST_CONFIG = {
+  verified: {
+    border: "rgba(47,93,80,0.25)",
+    bg: "rgba(47,93,80,0.05)",
+    badgeBg: "rgba(47,93,80,0.12)",
+    badgeColor: "#2F5D50",
+    badgeText: "✓ 已验证",
+    arrowColor: "#2F5D50",
+  },
+  search_only: {
+    border: "rgba(224,123,42,0.3)",
+    bg: "rgba(224,123,42,0.04)",
+    badgeBg: "rgba(224,123,42,0.12)",
+    badgeColor: "#E07B2A",
+    badgeText: "🔎 搜索",
+    arrowColor: "#E07B2A",
+  },
+} as const;
+
 interface Props {
   row: SubtaskWithTask;
   onClose: () => void;
@@ -20,7 +42,7 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
   const dateRange = getSubtaskDateRange(row);
 
   // Parse resources
-  type ResItem = { type: string; title: string; url?: string; searchQuery?: string; author?: string; platform?: string };
+  type ResItem = { type: string; title: string; url?: string; searchQuery?: string; author?: string; platform?: string; snippet?: string; trust_level?: "verified" | "search_only" };
   let resources: ResItem[] = [];
   if (row.resources) {
     try { resources = JSON.parse(row.resources) as ResItem[]; } catch { /* ignore */ }
@@ -31,6 +53,9 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
   if (row.keywords) {
     try { keywords = JSON.parse(row.keywords) as string[]; } catch { /* ignore */ }
   }
+
+  const verifiedCount = resources.filter((r) => r.trust_level === "verified").length;
+  const hasVerified = verifiedCount > 0;
 
   return (
     <>
@@ -76,25 +101,78 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
         {/* Resources */}
         {resources.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <div style={{ color: T.muted, fontSize: 11, fontWeight: 600, letterSpacing: "0.03em" }}>📚 推荐资源</div>
+            {/* 资源标题 + 可信度说明 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <span style={{ color: T.muted, fontSize: 11, fontWeight: 600, letterSpacing: "0.03em" }}>📚 推荐资源</span>
+              {hasVerified && (
+                <span style={{ fontSize: 9, fontWeight: 600, color: T.green, background: "rgba(47,93,80,0.1)", border: "1px solid rgba(47,93,80,0.2)", borderRadius: 4, padding: "1px 6px" }}>
+                  {verifiedCount} 个已验证 URL
+                </span>
+              )}
+              {!hasVerified && resources.length > 0 && (
+                <span style={{ fontSize: 9, color: T.muted, background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 6px" }}>
+                  点击搜索词自动检索
+                </span>
+              )}
+            </div>
+
             {resources.map((r, i) => {
-              const icon = r.type === "link" ? "🔗" : r.type === "search" ? "🔎" : r.type === "person" ? "👤" : "📚";
+              // 确定 trust_level（兼容旧数据：有 url 视为 verified，否则 search_only）
+              const trustLevel: "verified" | "search_only" =
+                r.trust_level ?? (r.url ? "verified" : "search_only");
+              const cfg = TRUST_CONFIG[trustLevel];
               const clickable = !!(r.url || r.searchQuery);
+              const typeIcon = r.type === "course" ? "📚" : r.type === "search" ? "🔎" : r.type === "person" ? "👤" : "🔗";
+
               return (
-                <div key={i}
+                <div
+                  key={i}
                   onClick={clickable ? () => {
                     if (r.url) window.open(r.url, "_blank", "noopener");
                     else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener");
                   } : undefined}
-                  style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "9px 11px", background: T.soft, borderRadius: 9, cursor: clickable ? "pointer" : "default" }}>
-                  <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>{icon}</span>
+                  style={{
+                    display: "flex", alignItems: "flex-start", gap: 9,
+                    padding: "9px 11px",
+                    background: cfg.bg,
+                    border: `1px solid ${cfg.border}`,
+                    borderRadius: 9,
+                    cursor: clickable ? "pointer" : "default",
+                    transition: "opacity 0.15s",
+                  }}
+                >
+                  <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>{typeIcon}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: T.ink, fontSize: 12, fontWeight: 500 }}>{r.title}</div>
-                    {r.author && <div style={{ color: T.muted, fontSize: 11, marginTop: 1 }}>👤 {r.author}{r.platform ? ` · ${r.platform}` : ""}</div>}
-                    {r.searchQuery && !r.url && <div style={{ color: T.accent, fontSize: 11, marginTop: 2, fontFamily: "var(--font-geist-mono), monospace" }}>搜：{r.searchQuery}</div>}
-                    {r.url && <div style={{ color: T.accent, fontSize: 10, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.url}</div>}
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                      <span style={{ color: T.ink, fontSize: 12, fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
+                      {/* trust_level 徽章 */}
+                      <span style={{ fontSize: 9, fontWeight: 700, color: cfg.badgeColor, background: cfg.badgeBg, borderRadius: 4, padding: "1px 5px", flexShrink: 0 }}>
+                        {cfg.badgeText}
+                      </span>
+                    </div>
+                    {/* 平台信息 */}
+                    {r.platform && <div style={{ color: T.muted, fontSize: 10, marginBottom: 2 }}>{r.platform}</div>}
+                    {/* 作者 */}
+                    {r.author && <div style={{ color: T.muted, fontSize: 10 }}>👤 {r.author}</div>}
+                    {/* 内容摘要（verified 资源才有） */}
+                    {r.snippet && (
+                      <div style={{ color: T.muted, fontSize: 10, marginTop: 3, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}>
+                        {r.snippet}
+                      </div>
+                    )}
+                    {/* URL 显示（verified）或搜索词（search_only） */}
+                    {r.url && (
+                      <div style={{ color: cfg.arrowColor, fontSize: 10, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.url}
+                      </div>
+                    )}
+                    {!r.url && r.searchQuery && (
+                      <div style={{ color: cfg.arrowColor, fontSize: 10, marginTop: 3, fontFamily: "var(--font-geist-mono), monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        搜：{r.searchQuery}
+                      </div>
+                    )}
                   </div>
-                  {clickable && <span style={{ color: T.accent, fontSize: 12, flexShrink: 0 }}>→</span>}
+                  {clickable && <span style={{ color: cfg.arrowColor, fontSize: 12, flexShrink: 0, marginTop: 2 }}>→</span>}
                 </div>
               );
             })}
