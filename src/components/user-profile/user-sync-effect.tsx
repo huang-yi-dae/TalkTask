@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { auth } from "@eazo/sdk";
-import { useEazo } from "@eazo/sdk/react";
+import { auth } from "@/lib/eazo-shim";
+import { useEazo } from "@/lib/eazo-shim";
 
 /**
  * Mobile-only: hits /api/user/profile once after login to upsert the user

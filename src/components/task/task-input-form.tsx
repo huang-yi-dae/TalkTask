@@ -2,9 +2,9 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { auth } from "@eazo/sdk";
-import { useEazo } from "@eazo/sdk/react";
-import { memory } from "@eazo/sdk";
+import { auth } from "@/lib/eazo-shim";
+import { useEazo } from "@/lib/eazo-shim";
+import { memory } from "@/lib/eazo-shim";
 import { AppAIClientUnavailableError } from "@/lib/api/app-ai-request";
 import { request } from "@/lib/api/request";
 import { createTask } from "@/lib/api/tasks";

@@ -9,7 +9,7 @@ import { upsertUser } from "@/lib/db/queries";
  * Also upserts the user into the local DB so user info is always up to date.
  */
 export async function GET(request: NextRequest) {
-  const auth = requireAuth(request);
+  const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
 
   const { user } = auth;

@@ -5,7 +5,7 @@ import { request } from "@/lib/api/request";
 import { AppAIClientUnavailableError } from "@/lib/api/app-ai-request";
 import { createTask, getTask } from "@/lib/api/tasks";
 import type { TaskWithSubtasks } from "@/lib/api/tasks";
-import { memory } from "@eazo/sdk";
+import { memory } from "@/lib/eazo-shim";
 
 const T = {
   surface: "#FFFFFF", soft: "#F1F2EE", line: "#E7E7E2",
@@ -36,6 +36,35 @@ const PIPELINE_STEPS: Array<{ key: Phase; label: string; icon: string }> = [
 ];
 const PHASE_ORDER: Phase[] = ["idle","intent","search","plan","validate","revise","saving","done"];
 
+// Client-side phase labels used by the ticker while we await the buffered
+// (non-streaming) analyze response.
+const PHASE_LABELS: Record<string, string> = {
+  intent: "解析学习意图…",
+  search: "匹配学习资源…",
+  plan: "设计学习计划…",
+  validate: "核查可执行性…",
+  saving: "写入数据库并排期…",
+};
+
+// Cumulative second at which each phase begins. Calibrated against a typical
+// 4-call pipeline (~70s end to end); the last phase is sticky, so a slower
+// model just holds on "saving" while the elapsed counter keeps ticking.
+const PHASE_TIMELINE: Array<[startSec: number, phase: Phase]> = [
+  [0, "intent"],
+  [8, "search"],
+  [22, "plan"],
+  [45, "validate"],
+  [65, "saving"],
+];
+
+function phaseForElapsed(elapsedSec: number): Phase {
+  let current: Phase = "intent";
+  for (const [startSec, phase] of PHASE_TIMELINE) {
+    if (elapsedSec >= startSec) current = phase;
+  }
+  return current;
+}
+
 export interface AnalysisEntry {
   taskId: string;
   taskTitle: string;
@@ -57,7 +86,21 @@ export function useAnalysisPanel() {
     const patchStream = (s: Partial<StreamState>) =>
       setEntries((prev) => prev.map((e) => e.taskId === taskId ? { ...e, stream: { ...e.stream, ...s } } : e));
 
-    patchStream({ phase: "intent", label: "解析学习意图…", deltaLen: 0, errorMsg: "" });
+    patchStream({ phase: "intent", label: PHASE_LABELS.intent, deltaLen: 0, errorMsg: "" });
+
+    // The analyze route buffers its whole 4-stage LLM pipeline into one JSON
+    // response, so the client gets no incremental signal. This ticker
+    // reconstructs the "Agent 体验" locally: it advances the phase on a
+    // timeline calibrated to how long each stage actually takes, and keeps a
+    // live elapsed counter so a 90s run never looks frozen.
+    const startedAt = Date.now();
+    const ticker = setInterval(() => {
+      const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+      const phase = phaseForElapsed(elapsedSec);
+      setEntries((prev) => prev.map((e) => e.taskId === taskId
+        ? { ...e, stream: { ...e.stream, phase, label: PHASE_LABELS[phase], deltaLen: elapsedSec } }
+        : e));
+    }, 1000);
 
     try {
       const res = await request(`/api/tasks/${taskId}/analyze`, {
@@ -66,44 +109,21 @@ export function useAnalysisPanel() {
       });
       if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
 
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const msg = JSON.parse(line.slice(6)) as { event: string; data: unknown };
-            if (msg.event === "phase") {
-              const d = msg.data as { step: string; label?: string };
-              patchStream({ phase: d.step as Phase, label: d.label || "" });
-            } else if (msg.event === "delta") {
-              setEntries((prev) => prev.map((e) => e.taskId === taskId
-                ? { ...e, stream: { ...e.stream, deltaLen: e.stream.deltaLen + 1 } } : e));
-            } else if (msg.event === "intent_done") {
-              const d = msg.data as { taskName?: string; topicCategory?: string };
-              setEntries((prev) => prev.map((e) => e.taskId === taskId
-                ? { ...e, taskTitle: d.taskName || e.taskTitle, topicCategory: d.topicCategory } : e));
-            } else if (msg.event === "result") {
-              const d = msg.data as { taskName?: string; rawInput?: string };
-              patchStream({ phase: "done" });
-              const full = await getTask(taskId).catch(() => null);
-              setEntries((prev) => prev.map((e) => e.taskId === taskId
-                ? { ...e, task: full, taskTitle: d.taskName || e.taskTitle, rawInput: d.rawInput || e.rawInput } : e));
-              if (isNew) memory.reportAction({ content: `Goal analyzed: "${goal}"`, event_type: "create" }).catch(() => {});
-            } else if (msg.event === "error") {
-              const d = msg.data as { message?: string };
-              patchStream({ phase: "error", errorMsg: d.message || "AI 分析失败" });
-            }
-          } catch { /* skip */ }
-        }
-      }
+      const json = (await res.json()) as {
+        ok: boolean;
+        result?: { taskName?: string; rawInput?: string };
+      };
+      if (!json.ok || !json.result) throw new Error("AI 分析未返回有效结果");
+
+      clearInterval(ticker);
+      patchStream({ phase: "done" });
+      const full = await getTask(taskId).catch(() => null);
+      setEntries((prev) => prev.map((e) => e.taskId === taskId
+        ? { ...e, task: full, taskTitle: json.result!.taskName || e.taskTitle, rawInput: json.result!.rawInput || e.rawInput }
+        : e));
+      if (isNew) memory.reportAction({ content: `Goal analyzed: "${goal}"`, event_type: "create" }).catch(() => {});
     } catch (err) {
+      clearInterval(ticker);
       if ((err as Error).name === "AbortError") return;
       if (err instanceof AppAIClientUnavailableError) return;
       patchStream({ phase: "error", errorMsg: err instanceof Error ? err.message : String(err) });
@@ -182,7 +202,7 @@ function PipelineSteps({ stream }: { stream: StreamState }) {
               <div style={{ color: isDone ? T.muted : isActive ? T.ink : T.muted, fontSize: 12, fontWeight: isActive ? 600 : 400 }}>{step.icon} {step.label}</div>
               {isActive && stream.label && <div style={{ color: T.accent, fontSize: 9, marginTop: 1, fontFamily: "var(--font-geist-mono), monospace" }}>{stream.label}</div>}
             </div>
-            {isActive && stream.deltaLen > 0 && <span style={{ color: T.muted, fontSize: 9, fontFamily: "var(--font-geist-mono), monospace", flexShrink: 0 }}>{stream.deltaLen}t</span>}
+            {isActive && stream.deltaLen > 0 && <span style={{ color: T.muted, fontSize: 9, fontFamily: "var(--font-geist-mono), monospace", flexShrink: 0 }}>{stream.deltaLen}s</span>}
           </div>
         );
       })}

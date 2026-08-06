@@ -7,7 +7,7 @@ import {
 } from "@/lib/db/queries";
 
 export async function GET(request: NextRequest) {
-  const auth = requireAuth(request);
+  const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
 
   const withSubtasks = request.nextUrl.searchParams.get("withSubtasks") === "1";
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = requireAuth(request);
+  const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
 
   const body = await request.json();

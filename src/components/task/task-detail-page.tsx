@@ -2,9 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useEazo } from "@eazo/sdk/react";
-import { auth } from "@eazo/sdk";
-import { memory } from "@eazo/sdk";
+import { useEazo, auth, memory } from "@/lib/eazo-shim";
 import { getTask, toggleSubtask } from "@/lib/api/tasks";
 import type { TaskWithSubtasks } from "@/lib/api/tasks";
 import { GanttChart } from "@/components/task/gantt-chart";

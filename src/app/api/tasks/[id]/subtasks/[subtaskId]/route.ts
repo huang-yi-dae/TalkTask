@@ -6,7 +6,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; subtaskId: string }> }
 ) {
-  const auth = requireAuth(request);
+  const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
 
   const { id, subtaskId } = await params;

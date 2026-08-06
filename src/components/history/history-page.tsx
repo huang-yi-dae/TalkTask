@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useEazo } from "@eazo/sdk/react";
-import { auth } from "@eazo/sdk";
+import { useEazo } from "@/lib/eazo-shim";
+import { auth } from "@/lib/eazo-shim";
 import { getTasks, deleteTask } from "@/lib/api/tasks";
 import type { TaskWithProgress } from "@/lib/api/tasks";
 

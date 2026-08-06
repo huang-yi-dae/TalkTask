@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useEazo } from "@eazo/sdk/react";
-import { auth } from "@eazo/sdk";
+import { useEazo } from "@/lib/eazo-shim";
+import { auth } from "@/lib/eazo-shim";
 import {
   deleteTask, getSubtasksWithTask, getTasksWithSubtasks,
   toggleSubtask, updateTaskStatusApi,

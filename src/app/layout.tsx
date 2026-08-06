@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Geist, Geist_Mono } from "next/font/google";
-import { EazoProvider } from "@eazo/sdk/react";
+import { EazoProvider } from "@/lib/eazo-shim";
 import { cn } from "@/utils/utils";
 import { Toaster } from "@/components/ui/sonner";
 import { UserSyncEffect } from "@/components/user-profile/user-sync-effect";

@@ -4,9 +4,9 @@ import { useRef, useState, useEffect } from "react";
 import Image from "next/image";
 import { LogOut, UserRound, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { auth } from "@eazo/sdk";
-import { useEazo } from "@eazo/sdk/react";
-import type { User } from "@eazo/sdk";
+import { auth } from "@/lib/eazo-shim";
+import { useEazo } from "@/lib/eazo-shim";
+import type { User } from "@/lib/eazo-shim";
 
 export function UserBadge() {
   const { t } = useTranslation();

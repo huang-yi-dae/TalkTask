@@ -4,7 +4,7 @@ import { requireAuth } from "@/lib/auth";
 import { buildMcpServer } from "@/lib/mcp/server";
 
 async function handleMcpRequest(request: NextRequest): Promise<Response> {
-  const auth = requireAuth(request);
+  const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
 
   const transport = new WebStandardStreamableHTTPServerTransport({
