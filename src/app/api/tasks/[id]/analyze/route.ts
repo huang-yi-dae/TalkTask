@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { appAi } from "@/lib/eazo-ai-billing";
 import { resolveResources, type SearchIntent, type TrustableResource } from "@/lib/tavily";
+import { validateResources } from "@/lib/resource-validator";
 import { extractUrl, fetchUrlContent, formatContentForPrompt } from "@/lib/url-fetcher";
 import {
   getTaskById,
@@ -362,6 +363,10 @@ export async function POST(
     const resources: TrustableResource[] = await resolveResources(intentList, topicCategory);
     const verifiedCount = resources.filter((r) => r.trust_level === "verified").length;
 
+    // 三维可信度验证（URL 存活 + 域名权威分 + 新鲜度），并行 ≤3s，不阻断主流程
+    await validateResources(resources);
+    const reachableCount = resources.filter((r) => r.url_status === "ok" || r.url_status === "redirect").length;
+
     // ── Stage 3: Plan ─────────────────────────────────────────────
     const planRaw = await callAI(
       "你是学习计划设计专家，精通Bloom认知分类法和认知负荷理论，请以 JSON 格式精确回复，不要加 markdown 代码块。",
@@ -525,6 +530,7 @@ export async function POST(
       bloomTarget,
       reviewNodes,
       verifiedCount,
+      reachableCount,
     };
 
     return NextResponse.json({ ok: true, result });
