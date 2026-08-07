@@ -2,6 +2,11 @@
 
 import type { SubtaskWithTask } from "@/lib/api/tasks";
 import { getSubtaskDateRange } from "./subtask-row";
+import {
+  URL_STATUS_CONFIG,
+  FRESHNESS_CONFIG,
+  AUTHORITY_LABEL_CONFIG,
+} from "@/lib/resource-validator";
 
 const T = {
   surface: "#FFFFFF", soft: "#F1F2EE", line: "#E7E7E2",
@@ -41,14 +46,26 @@ interface Props {
 export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props) {
   const dateRange = getSubtaskDateRange(row);
 
-  // Parse resources
-  type ResItem = { type: string; title: string; url?: string; searchQuery?: string; author?: string; platform?: string; snippet?: string; trust_level?: "verified" | "search_only" };
+  // 解析资源（兼容旧格式和新 TrustableResource 格式）
+  type ResItem = {
+    type: string; title: string; url?: string; searchQuery?: string;
+    author?: string; platform?: string; snippet?: string;
+    trust_level?: "verified" | "search_only";
+    // 三维可信度字段
+    url_status?: string;
+    http_status?: number;
+    resolved_url?: string;
+    authority_score?: number;
+    authority_label?: string;
+    freshness?: string;
+    last_modified?: string;
+  };
   let resources: ResItem[] = [];
   if (row.resources) {
     try { resources = JSON.parse(row.resources) as ResItem[]; } catch { /* ignore */ }
   }
 
-  // Parse keywords
+  // 解析关键词
   let keywords: string[] = [];
   if (row.keywords) {
     try { keywords = JSON.parse(row.keywords) as string[]; } catch { /* ignore */ }
@@ -117,53 +134,110 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
             </div>
 
             {resources.map((r, i) => {
-              // 确定 trust_level（兼容旧数据：有 url 视为 verified，否则 search_only）
+              // 确定 trust_level（兼容旧数据）
               const trustLevel: "verified" | "search_only" =
                 r.trust_level ?? (r.url ? "verified" : "search_only");
               const cfg = TRUST_CONFIG[trustLevel];
               const clickable = !!(r.url || r.searchQuery);
               const typeIcon = r.type === "course" ? "📚" : r.type === "search" ? "🔎" : r.type === "person" ? "👤" : "🔗";
 
+              // 三维信号
+              const urlStatusKey = (r.url_status ?? "unchecked") as keyof typeof URL_STATUS_CONFIG;
+              const statusCfg = URL_STATUS_CONFIG[urlStatusKey] ?? URL_STATUS_CONFIG.unchecked;
+              const freshKey = (r.freshness ?? "unknown") as keyof typeof FRESHNESS_CONFIG;
+              const freshCfg = FRESHNESS_CONFIG[freshKey];
+              const authLabel = (r.authority_label ?? "unknown") as keyof typeof AUTHORITY_LABEL_CONFIG;
+              const authCfg = AUTHORITY_LABEL_CONFIG[authLabel];
+              const hasValidation = r.url_status !== undefined;
+              const isDead = r.url_status === "not_found" || r.url_status === "dead";
+
               return (
                 <div
                   key={i}
-                  onClick={clickable ? () => {
-                    if (r.url) window.open(r.url, "_blank", "noopener");
+                  onClick={clickable && !isDead ? () => {
+                    const targetUrl = r.resolved_url ?? r.url;
+                    if (targetUrl) window.open(targetUrl, "_blank", "noopener");
                     else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener");
                   } : undefined}
                   style={{
                     display: "flex", alignItems: "flex-start", gap: 9,
                     padding: "9px 11px",
-                    background: cfg.bg,
-                    border: `1px solid ${cfg.border}`,
+                    background: isDead ? "rgba(192,57,43,0.05)" : cfg.bg,
+                    border: `1px solid ${isDead ? "rgba(192,57,43,0.25)" : cfg.border}`,
                     borderRadius: 9,
-                    cursor: clickable ? "pointer" : "default",
+                    cursor: (clickable && !isDead) ? "pointer" : "default",
+                    opacity: isDead ? 0.7 : 1,
                     transition: "opacity 0.15s",
                   }}
                 >
                   <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>{typeIcon}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
-                      <span style={{ color: T.ink, fontSize: 12, fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
-                      {/* trust_level 徽章 */}
+                    {/* 标题行 + trust徽章 */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
+                      <span style={{ color: isDead ? T.muted : T.ink, fontSize: 12, fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
                       <span style={{ fontSize: 9, fontWeight: 700, color: cfg.badgeColor, background: cfg.badgeBg, borderRadius: 4, padding: "1px 5px", flexShrink: 0 }}>
                         {cfg.badgeText}
                       </span>
                     </div>
-                    {/* 平台信息 */}
-                    {r.platform && <div style={{ color: T.muted, fontSize: 10, marginBottom: 2 }}>{r.platform}</div>}
-                    {/* 作者 */}
+
+                    {/* 三维信号徽章行 */}
+                    {hasValidation && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3, flexWrap: "wrap" }}>
+                        {/* URL 状态 */}
+                        <span style={{
+                          fontSize: 9, fontWeight: 600, color: statusCfg.color,
+                          background: statusCfg.bg, border: `1px solid ${statusCfg.border}`,
+                          borderRadius: 4, padding: "1px 5px",
+                        }}>
+                          {statusCfg.icon} {statusCfg.label}
+                        </span>
+
+                        {/* 域名权威分 */}
+                        {r.authority_score !== undefined && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 600,
+                            color: r.authority_score >= 8 ? "#2F5D50" : r.authority_score >= 5 ? "#8B6A2E" : "#777B75",
+                            background: r.authority_score >= 8 ? "rgba(47,93,80,0.08)" : r.authority_score >= 5 ? "rgba(139,106,46,0.08)" : "rgba(119,123,117,0.07)",
+                            border: `1px solid ${r.authority_score >= 8 ? "rgba(47,93,80,0.2)" : r.authority_score >= 5 ? "rgba(139,106,46,0.2)" : "rgba(119,123,117,0.2)"}`,
+                            borderRadius: 4, padding: "1px 5px",
+                          }}>
+                            {authCfg.icon} {authCfg.label} {r.authority_score}/10
+                          </span>
+                        )}
+
+                        {/* 新鲜度 */}
+                        {r.freshness && r.freshness !== "unknown" && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 600, color: freshCfg.color,
+                            background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)",
+                            borderRadius: 4, padding: "1px 5px",
+                          }}>
+                            {freshCfg.icon} {freshCfg.label}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 平台 + 作者 */}
+                    {r.platform && <div style={{ color: T.muted, fontSize: 10, marginBottom: 1 }}>{r.platform}</div>}
                     {r.author && <div style={{ color: T.muted, fontSize: 10 }}>👤 {r.author}</div>}
-                    {/* 内容摘要（verified 资源才有） */}
+
+                    {/* 内容摘要 */}
                     {r.snippet && (
                       <div style={{ color: T.muted, fontSize: 10, marginTop: 3, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties}>
                         {r.snippet}
                       </div>
                     )}
-                    {/* URL 显示（verified）或搜索词（search_only） */}
-                    {r.url && (
+
+                    {/* URL / 搜索词 */}
+                    {!isDead && (r.resolved_url ?? r.url) && (
                       <div style={{ color: cfg.arrowColor, fontSize: 10, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {r.url}
+                        {r.resolved_url ?? r.url}
+                      </div>
+                    )}
+                    {isDead && (
+                      <div style={{ color: "#C0392B", fontSize: 10, marginTop: 3 }}>
+                        ⚠ 该链接当前不可访问
                       </div>
                     )}
                     {!r.url && r.searchQuery && (
@@ -172,10 +246,29 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
                       </div>
                     )}
                   </div>
-                  {clickable && <span style={{ color: cfg.arrowColor, fontSize: 12, flexShrink: 0, marginTop: 2 }}>→</span>}
+                  {(clickable && !isDead) && <span style={{ color: cfg.arrowColor, fontSize: 12, flexShrink: 0, marginTop: 2 }}>→</span>}
+                  {isDead && <span style={{ color: "#C0392B", fontSize: 12, flexShrink: 0, marginTop: 2 }}>✕</span>}
                 </div>
               );
             })}
+
+            {/* 可信度图例 */}
+            <div style={{ display: "flex", gap: 8, paddingTop: 2, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: T.green, flexShrink: 0 }} />
+                <span style={{ color: T.muted, fontSize: 10 }}>✓ 可访问 URL</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: T.orange, flexShrink: 0 }} />
+                <span style={{ color: T.muted, fontSize: 10 }}>搜索词 — 点击跳转搜索引擎</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 9, color: T.muted }}>🏛 官方文档权威分最高（10/10）</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 9, color: T.muted }}>🟢 近期更新 🟡 1-3年 🔴 3年以上</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -217,3 +310,6 @@ function MetaTag({ label, value, color }: { label: string; value: string; color?
     </div>
   );
 }
+
+
+

@@ -33,6 +33,22 @@ export interface TrustableResource {
   trust_level: "verified" | "search_only";
   learning_phase?: "input" | "practice" | "reference";
   suitable_for?: "beginner" | "intermediate" | "advanced" | "all";
+
+  // ── 三维可信度增强字段（由 resource-validator.ts 填充）────────────────────
+  /** HEAD 检测结果 */
+  url_status?: "ok" | "redirect" | "login_required" | "not_found" | "dead" | "timeout" | "unchecked";
+  /** HTTP 响应码 */
+  http_status?: number;
+  /** 重定向后的最终 URL */
+  resolved_url?: string;
+  /** 域名权威分 0–10 */
+  authority_score?: number;
+  /** 域名类别 */
+  authority_label?: "official" | "platform" | "community" | "blog" | "unknown";
+  /** 内容新鲜度 */
+  freshness?: "high" | "medium" | "low" | "unknown";
+  /** Last-Modified 原始值 */
+  last_modified?: string;
 }
 
 // ─── 白名单域名表（按领域分类）─────────────────────────────────────────────
