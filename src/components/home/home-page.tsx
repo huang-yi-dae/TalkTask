@@ -11,7 +11,8 @@ import {
 import type { SubtaskWithTask } from "@/lib/api/tasks";
 import { RightPanel, useAnalysisPanel } from "./right-panel";
 import { NewTaskInput } from "./new-task-input";
-import { SubtaskRow, getSubtaskActualDates } from "./subtask-row";
+import { getSubtaskActualDates } from "./subtask-row";
+import { TimelineCard, TimelineSectionHeader } from "./timeline-card";
 import { SubtaskDetailModal } from "./subtask-detail-modal";
 import { CongratulationsModal, type CongratsData } from "./congrats-modal";
 
@@ -163,15 +164,30 @@ export function HomePage() {
             ) : filteredRows.length === 0 ? (
               <div style={{ color: T.muted, fontSize: 13, padding: "60px 24px", textAlign: "center" }}>当前筛选下暂无任务，点击右上角新建。</div>
             ) : (
-              filteredRows.map((row) => (
-                <SubtaskRow key={row.id} row={row}
-                  isSelected={focusedId === row.taskId}
-                  isHighlighted={highlightedSubtaskId === row.id}
-                  onOpen={() => setDetailSubtask(row)}
-                  onSelect={() => { setFocusedId(row.taskId); focusTask(row.taskId); }}
-                  onDeleteTask={handleDeleteTask}
-                  onToggle={(e) => { e.stopPropagation(); handleToggleSubtask(row.taskId, row.id, row.completed); }}
-                />
+              buildTimelineSections(filteredRows).filter((s) => s.rows.length > 0).map((section) => (
+                <div key={section.key} style={{ marginBottom: 28 }}>
+                  <TimelineSectionHeader
+                    label={section.label}
+                    sublabel={section.sublabel}
+                    accentColor={section.accentColor}
+                    pendingCount={section.rows.filter((r) => !r.completed).length}
+                  />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {section.rows.map((row) => (
+                      <div key={row.id} id={`subtask-card-${row.id}`}>
+                        <TimelineCard
+                          row={row}
+                          isSelected={focusedId === row.taskId}
+                          isHighlighted={highlightedSubtaskId === row.id}
+                          onOpen={() => setDetailSubtask(row)}
+                          onSelect={() => { setFocusedId(row.taskId); focusTask(row.taskId); }}
+                          onDeleteTask={handleDeleteTask}
+                          onToggle={(e) => { e.stopPropagation(); handleToggleSubtask(row.taskId, row.id, row.completed); }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ))
             )}
           </div>
@@ -191,6 +207,67 @@ export function HomePage() {
       {congrats && <CongratulationsModal data={congrats} onClose={() => setCongrats(null)} onLearnMore={(taskId) => { setFocusedId(taskId); focusTask(taskId); setCongrats(null); }} />}
     </div>
   );
+}
+
+// ─── 时间轴分段构建 ───────────────────────────────────────────────────
+interface TimelineSection {
+  key: string;
+  label: string;
+  sublabel: string;
+  accentColor: string;
+  rows: SubtaskWithTask[];
+}
+
+/**
+ * 将所有子任务按时间段分为 4 组：
+ *   今天 / 明天 / 本周（后 7 天）/ 更晚
+ * 每组内：未完成在前（按 sortOrder），已完成在后
+ * 移植自 mytask（huang-yi-dae/MyTask）fresh-start 分支，适配 talkTask 的 eazo-shim。
+ */
+function buildTimelineSections(rows: SubtaskWithTask[]): TimelineSection[] {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today.getTime() + 86400000);
+  const weekEnd = new Date(today.getTime() + 7 * 86400000);
+
+  const fmtDate = (d: Date) => d.toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short" });
+  const fmtRange = (s: Date, e: Date) =>
+    `${s.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })} — ${e.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}`;
+
+  const buckets: Record<string, SubtaskWithTask[]> = {
+    today: [], tomorrow: [], week: [], later: [],
+  };
+
+  for (const r of rows) {
+    const dates = getSubtaskActualDates(r);
+    if (!dates) {
+      buckets.today.push(r);
+      continue;
+    }
+    const { start, end } = dates;
+    if (start <= today && today <= end) {
+      buckets.today.push(r);
+    } else if (start <= tomorrow && tomorrow <= end) {
+      buckets.tomorrow.push(r);
+    } else if (start <= weekEnd && end >= today) {
+      buckets.week.push(r);
+    } else {
+      buckets.later.push(r);
+    }
+  }
+
+  const sort = (arr: SubtaskWithTask[]) =>
+    [...arr].sort((a, b) => {
+      if (a.completed !== b.completed) return a.completed ? 1 : -1;
+      return a.sortOrder - b.sortOrder;
+    });
+
+  return [
+    { key: "today", label: "今天", sublabel: fmtDate(today), accentColor: "#3B7AFF", rows: sort(buckets.today) },
+    { key: "tomorrow", label: "明天", sublabel: fmtDate(tomorrow), accentColor: "#E07B2A", rows: sort(buckets.tomorrow) },
+    { key: "week", label: "本周", sublabel: fmtRange(new Date(today.getTime() + 2 * 86400000), weekEnd), accentColor: "#2F5D50", rows: sort(buckets.week) },
+    { key: "later", label: "更晚", sublabel: "7 天之后", accentColor: "#94a3b8", rows: sort(buckets.later) },
+  ];
 }
 
 // ─── Time Filter Tabs ─────────────────────────────────────────────────
