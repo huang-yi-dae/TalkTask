@@ -160,6 +160,8 @@ export type SubtaskInsert = {
   urgency?: number | null;
   importance?: number | null;
   keywords?: string | null;  // JSON string[]
+  bloomLevel?: number | null;     // 1-6 Bloom 认知层级
+  deepWorkHours?: number | null;  // 预计深度学习时长（小时）
 };
 
 export async function createSubtasks(
