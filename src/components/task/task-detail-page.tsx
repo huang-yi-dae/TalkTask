@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useEazo, auth, memory } from "@/lib/eazo-shim";
+import { useEazo, memory } from "@/lib/eazo-shim";
 import { getTask, toggleSubtask } from "@/lib/api/tasks";
 import type { TaskWithSubtasks } from "@/lib/api/tasks";
-import { GanttChart } from "@/components/task/gantt-chart";
+import { TaskDetailContent } from "@/components/task/task-detail-content";
 
 interface TaskDetailPageProps {
   taskId: string;
@@ -19,8 +19,7 @@ export function TaskDetailPage({ taskId }: TaskDetailPageProps) {
   const [error, setError] = useState<string | null>(null);
 
   const completedCount = task?.subtasks.filter((s) => s.completed).length ?? 0;
-  const totalCount = task?.subtasks.length ?? 0;
-  const progressPct = totalCount > 0 ? completedCount / totalCount : 0;
+  void completedCount; // 由 TaskDetailContent 内部计算，此处仅保留供未来扩展
 
   useEffect(() => {
     if (!user) return;
@@ -60,23 +59,6 @@ export function TaskDetailPage({ taskId }: TaskDetailPageProps) {
     return <PageShell><LoadingState /></PageShell>;
   }
 
-  if (!user) {
-    return (
-      <PageShell>
-        <div className="flex flex-col items-center gap-4 py-20">
-          <p className="text-[14px]" style={{ color: "#777B75" }}>需要登录</p>
-          <button
-            onClick={() => auth.login().catch(() => {})}
-            className="px-6 py-[10px] rounded-full text-[14px] font-medium text-white hover:opacity-90 transition-opacity"
-            style={{ background: "#111111" }}
-          >
-            登录
-          </button>
-        </div>
-      </PageShell>
-    );
-  }
-
   if (error || !task) {
     return (
       <PageShell>
@@ -87,125 +69,8 @@ export function TaskDetailPage({ taskId }: TaskDetailPageProps) {
 
   return (
     <PageShell>
-      <div className="flex flex-col gap-6">
-        {/* Title */}
-        <div>
-          <h1
-            className="text-[clamp(28px,8vw,52px)] font-semibold leading-none tracking-[-0.05em]"
-            style={{ color: "#111111" }}
-          >
-            {task.title}
-          </h1>
-          <p
-            className="mt-2 text-[13px]"
-            style={{ color: "#777B75", fontFamily: "var(--font-geist-mono), monospace" }}
-          >
-            {task.totalDays}天计划 ·{" "}
-            {new Date(task.createdAt).toLocaleDateString("zh-CN")} ·{" "}
-            {completedCount}/{totalCount} 完成
-          </p>
-        </div>
-
-        {/* Progress bar */}
-        <div className="h-[3px] rounded-full" style={{ background: "#E7E7E2" }}>
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${progressPct * 100}%`, background: "#3B7AFF" }}
-          />
-        </div>
-
-        {/* Task card: checklist + collapsible gantt */}
-        <div
-          className="rounded-[20px] overflow-hidden"
-          style={{
-            border: "1px solid #E7E7E2",
-            background: "rgba(255,255,255,0.56)",
-            boxShadow: "0 12px 40px rgba(20,20,20,0.035)",
-          }}
-        >
-          {task.subtasks.map((s, i) => (
-            <label
-              key={s.id}
-              className="grid items-center px-[18px] py-4 cursor-pointer transition-colors hover:bg-white active:scale-[0.99]"
-              style={{
-                gridTemplateColumns: "auto 1fr auto",
-                gap: 12,
-                borderTop: i === 0 ? "none" : "1px solid #E7E7E2",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={s.completed}
-                onChange={() => handleToggle(s.id, s.completed)}
-                style={{ accentColor: "#3B7AFF", width: 20, height: 20 }}
-              />
-              <span>
-                <b
-                  className="text-[15px] font-semibold block"
-                  style={{
-                    color: s.completed ? "#777B75" : "#111111",
-                    textDecoration: s.completed ? "line-through" : "none",
-                  }}
-                >
-                  {s.title}
-                </b>
-                {s.description && (
-                  <small className="block mt-1 text-[13px]" style={{ color: "#777B75" }}>
-                    {s.description}
-                  </small>
-                )}
-              </span>
-              <span
-                className="text-[12px] font-medium"
-                style={{ color: "#2F5D50", fontFamily: "var(--font-geist-mono), monospace" }}
-              >
-                {s.durationDays}天
-              </span>
-            </label>
-          ))}
-
-          <GanttChart
-            subtasks={task.subtasks}
-            totalDays={task.totalDays}
-            animated={false}
-            collapsible={true}
-            defaultOpen={true}
-          />
-        </div>
-
-        {/* Stats row */}
-        <div className="flex gap-8 pt-2">
-          <Stat label="已完成" value={String(completedCount)} />
-          <Stat label="总计" value={String(totalCount)} />
-          <Stat label="计划天数" value={`${task.totalDays}天`} />
-        </div>
-      </div>
+      <TaskDetailContent task={task} onToggle={handleToggle} />
     </PageShell>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div
-        className="text-[clamp(22px,5vw,32px)] font-semibold"
-        style={{ letterSpacing: "-0.05em", color: "#111111" }}
-      >
-        {value}
-      </div>
-      <div
-        className="text-[11px] uppercase tracking-[0.06em] mt-0.5"
-        style={{ color: "#777B75", fontFamily: "var(--font-geist-mono), monospace" }}
-      >
-        {value}
-      </div>
-      <div
-        className="text-[11px] uppercase tracking-[0.06em] mt-0.5"
-        style={{ color: "#777B75", fontFamily: "var(--font-geist-mono), monospace" }}
-      >
-        {label}
-      </div>
-    </div>
   );
 }
 
