@@ -6,122 +6,96 @@ import { eq, and, gte, sql } from "drizzle-orm";
 
 /**
  * GET /api/user/stats
- * 返回用户的学习统计数据：
- *   - streak：连续学习天数（连续有完成记录的日历天数）
- *   - weeklyCompleted：本周完成子任务数
- *   - weeklyTotal：本周计划子任务数
- *   - todayCompleted：今天完成数
- *   - totalCompleted：累计完成总数
- *   - activeTasks：进行中的大任务数
+ * 返回用户学习统计：连续天数、今日完成数、本周完成数、历史累计、活跃任务数
  */
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
-
-  const userId = auth.user.id;
+  const { user } = auth;
 
   try {
-    // ── 计算时间边界 ──────────────────────────────────────────────────
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayEnd   = new Date(todayStart.getTime() + 86400000);
-
-    // 本周一 0:00
-    const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1; // 周一=0
-    const weekStart = new Date(todayStart.getTime() - dayOfWeek * 86400000);
-
-    // 90 天内（streak 最多追溯 90 天）
-    const ninetyDaysAgo = new Date(todayStart.getTime() - 90 * 86400000);
-
-    // ── 查询完成的子任务（含日期信息）────────────────────────────────
-    const completedRows = await db
+    // 获取所有完成记录（含完成时间）
+    const rows = await db
       .select({
         completedAt: subtasks.completedAt,
-        taskUserId: tasks.userId,
+        completed: subtasks.completed,
       })
       .from(subtasks)
       .innerJoin(tasks, eq(subtasks.taskId, tasks.id))
-      .where(
-        and(
-          eq(tasks.userId, userId),
-          eq(subtasks.completed, true),
-          gte(subtasks.completedAt, ninetyDaysAgo),
-        )
-      );
+      .where(and(eq(tasks.userId, user.id), eq(subtasks.completed, true)));
 
-    // ── 今天完成数 ────────────────────────────────────────────────────
-    const todayCompleted = completedRows.filter((r) => {
-      if (!r.completedAt) return false;
-      const d = new Date(r.completedAt);
-      return d >= todayStart && d < todayEnd;
-    }).length;
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
 
-    // ── 本周完成数 ────────────────────────────────────────────────────
-    const weeklyCompleted = completedRows.filter((r) => {
-      if (!r.completedAt) return false;
-      return new Date(r.completedAt) >= weekStart;
-    }).length;
+    // 提取所有完成日期（去重）
+    const completedDates = new Set<string>();
+    let todayCount = 0;
 
-    // ── 本周计划数（本周 startDay 区间内的子任务）───────────────────
-    // 简化：统计 status=active 任务下所有子任务数量作为分母
-    const weeklyTotalRows = await db
+    for (const row of rows) {
+      if (row.completedAt) {
+        const d = row.completedAt.toISOString().slice(0, 10);
+        completedDates.add(d);
+        if (d === todayStr) todayCount++;
+      }
+    }
+
+    // 计算连续天数（从今天或昨天开始向前数）
+    let streak = 0;
+    const check = new Date(now);
+    // 如果今天有完成记录从今天算，否则从昨天算
+    if (!completedDates.has(todayStr)) {
+      check.setDate(check.getDate() - 1);
+    }
+    while (true) {
+      const d = check.toISOString().slice(0, 10);
+      if (!completedDates.has(d)) break;
+      streak++;
+      check.setDate(check.getDate() - 1);
+    }
+
+    // 本周完成数（周一到今天）
+    const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1; // 0=周一
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - dayOfWeek);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const weekRows = await db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(subtasks)
       .innerJoin(tasks, eq(subtasks.taskId, tasks.id))
-      .where(and(eq(tasks.userId, userId), eq(tasks.status, "active")));
-    const weeklyTotal = weeklyTotalRows[0]?.count ?? 0;
+      .where(and(
+        eq(tasks.userId, user.id),
+        eq(subtasks.completed, true),
+        gte(subtasks.completedAt, weekStart),
+      ));
+    const weekCount = weekRows[0]?.count ?? 0;
 
-    // ── 累计完成总数 ─────────────────────────────────────────────────
-    const totalRows = await db
+    // 今天总计（含未完成）
+    const todayTotalRows = await db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(subtasks)
       .innerJoin(tasks, eq(subtasks.taskId, tasks.id))
-      .where(and(eq(tasks.userId, userId), eq(subtasks.completed, true)));
-    const totalCompleted = totalRows[0]?.count ?? 0;
+      .where(and(
+        eq(tasks.userId, user.id),
+        eq(subtasks.completed, false),
+      ));
 
-    // ── 进行中大任务数 ───────────────────────────────────────────────
-    const activeRows = await db
+    // 活跃任务数
+    const activeTaskRows = await db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(tasks)
-      .where(and(eq(tasks.userId, userId), eq(tasks.status, "active")));
-    const activeTasks = activeRows[0]?.count ?? 0;
-
-    // ── 计算连续天数（streak）────────────────────────────────────────
-    // 把 completedAt 按日期归组，得到 Set<dateStr>
-    const activeDays = new Set<string>();
-    for (const r of completedRows) {
-      if (!r.completedAt) continue;
-      const d = new Date(r.completedAt);
-      activeDays.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`);
-    }
-
-    // 从今天或昨天开始往回数连续天数
-    let streak = 0;
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
-    // 如果今天有完成，从今天算；否则从昨天算（当天未完成不断streak）
-    const startFromToday = activeDays.has(todayStr);
-    let checkDate = new Date(todayStart);
-    if (!startFromToday) {
-      checkDate = new Date(todayStart.getTime() - 86400000); // 从昨天开始
-    }
-
-    for (let i = 0; i < 90; i++) {
-      const dStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth()+1).padStart(2,"0")}-${String(checkDate.getDate()).padStart(2,"0")}`;
-      if (!activeDays.has(dStr)) break;
-      streak++;
-      checkDate = new Date(checkDate.getTime() - 86400000);
-    }
+      .where(and(eq(tasks.userId, user.id), eq(tasks.status, "active")));
+    const activeTaskCount = activeTaskRows[0]?.count ?? 0;
 
     return NextResponse.json({
       streak,
-      todayCompleted,
-      weeklyCompleted,
-      weeklyTotal,
-      totalCompleted,
-      activeTasks,
+      todayCount,
+      weekCount,
+      totalCompleted: rows.length,
+      activeTaskCount,
     });
   } catch (err) {
-    console.error("[stats] error:", err);
-    return NextResponse.json({ streak: 0, todayCompleted: 0, weeklyCompleted: 0, weeklyTotal: 0, totalCompleted: 0, activeTasks: 0 });
+    console.error("[stats]", err);
+    return NextResponse.json({ streak: 0, todayCount: 0, weekCount: 0, totalCompleted: 0, activeTaskCount: 0 });
   }
 }
