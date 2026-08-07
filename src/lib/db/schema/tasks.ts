@@ -54,6 +54,7 @@ export const subtasks = pgTable(
     urgency: integer("urgency"),         // 1-5 紧急度
     importance: integer("importance"),   // 1-5 重要度
     keywords: text("keywords"),          // JSON: string[] 关键词
+    completedAt: timestamp("completed_at", { withTimezone: true }), // 完成时间（用于连续性追踪 / streak）
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
