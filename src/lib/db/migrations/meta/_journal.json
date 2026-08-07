@@ -15,6 +15,13 @@
       "when": 1786022481728,
       "tag": "0001_cultured_dust",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786100609467,
+      "tag": "0002_streak_completed_at",
+      "breakpoints": true
     }
   ]
 }
