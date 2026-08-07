@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { appAi } from "@/lib/eazo-ai-billing";
 import { resolveResources, type SearchIntent, type TrustableResource } from "@/lib/tavily";
+import { extractUrl, fetchUrlContent, formatContentForPrompt } from "@/lib/url-fetcher";
 import {
   getTaskById,
   createSubtasks,
@@ -298,11 +299,24 @@ export async function POST(
 
   const rawGoal = task.rawInput || task.title;
 
+  // ── Stage 0: URL 内容抓取（如果输入包含 URL）───────────────
+  // 在 AI 分析之前，先抓取真实页面内容并注入 Prompt，让 AI 基于实际
+  // 资料而非猜测来规划。任何抓取失败都降级为 urlContext=""（不阻断分析）。
+  let urlContext = "";
+  const detectedUrl = extractUrl(rawGoal);
+  if (detectedUrl) {
+    const fetched = await fetchUrlContent(detectedUrl);
+    if (fetched) {
+      urlContext = formatContentForPrompt(fetched);
+    }
+  }
+  const enrichedGoal = urlContext ? `${rawGoal}\n\n${urlContext}` : rawGoal;
+
   try {
     // ── Stage 1: Intent ───────────────────────────────────────────
     const intentRaw = await callAI(
       INTENT_PROMPT,
-      rawGoal + (adjustment ? `\n调整要求：${adjustment}` : "")
+      enrichedGoal + (adjustment ? `\n调整要求：${adjustment}` : "")
     );
 
     interface IntentResult {
@@ -334,7 +348,7 @@ export async function POST(
     const intentRawStr = await callAI(
       "你是资深学习资源顾问，请以 JSON 格式精确回复，不要加 markdown 代码块。严禁生成任何 URL。",
       RESOURCE_INTENT_PROMPT
-        .replace("{GOAL}", rawGoal)
+        .replace("{GOAL}", enrichedGoal.slice(0, 800))
         .replace("{DOMAIN}", domain)
         .replace(/{PRIOR_LEVEL}/g, priorLevel)
         .replace("{KEYWORDS}", keywords)
@@ -352,7 +366,7 @@ export async function POST(
     const planRaw = await callAI(
       "你是学习计划设计专家，精通Bloom认知分类法和认知负荷理论，请以 JSON 格式精确回复，不要加 markdown 代码块。",
       PLAN_PROMPT
-        .replace("{GOAL}", rawGoal)
+        .replace("{GOAL}", enrichedGoal)
         .replace("{TASK_NAME}", taskName)
         .replace("{DOMAIN}", domain)
         .replace(/{PRIOR_LEVEL}/g, priorLevel)
@@ -381,7 +395,7 @@ export async function POST(
     const validateRaw = await callAI(
       "你是教育心理学专家，请以 JSON 格式精确回复，不要加 markdown 代码块。",
       VALIDATE_PROMPT
-        .replace("{GOAL}", rawGoal)
+        .replace("{GOAL}", enrichedGoal)
         .replace(/{PRIOR_LEVEL}/g, priorLevel)
         .replace("{PLAN}", JSON.stringify(plan.subtasks))
     );
@@ -407,7 +421,7 @@ export async function POST(
       const revisedRaw = await callAI(
         "你是学习计划设计专家，精通Bloom认知分类法，请以 JSON 格式精确回复，不要加 markdown 代码块。",
         PLAN_PROMPT
-          .replace("{GOAL}", rawGoal)
+          .replace("{GOAL}", enrichedGoal)
           .replace("{TASK_NAME}", taskName)
           .replace("{DOMAIN}", domain)
           .replace(/{PRIOR_LEVEL}/g, priorLevel)
