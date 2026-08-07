@@ -181,7 +181,10 @@ function SubtaskItem({
     try { keywords = JSON.parse(subtask.keywords) as string[]; } catch { /* ignore */ }
   }
 
-  const bloomRaw = subtask.urgency ? Math.max(1, Math.min(5, 6 - subtask.urgency)) : 2;
+  // 优先用真实 DB 字段，旧数据降级用 urgency 反推
+  const bloomRaw = subtask.bloomLevel
+    ? Math.max(1, Math.min(6, subtask.bloomLevel))
+    : (subtask.urgency ? Math.max(1, Math.min(5, 6 - subtask.urgency)) : 2);
   const bloomStage = BLOOM[bloomRaw - 1];
 
   // 计算日期标签

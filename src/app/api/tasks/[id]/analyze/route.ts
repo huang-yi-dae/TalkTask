@@ -497,6 +497,8 @@ export async function POST(
         urgency: urgencyScore,
         importance: importanceScore,
         keywords: keywordsArr.length > 0 ? JSON.stringify(keywordsArr) : null,
+        bloomLevel: s.bloom_level ?? null,         // ← 真实写入 DB
+        deepWorkHours: s.deep_work_hours ?? null,  // ← 真实写入 DB
       };
     });
 
