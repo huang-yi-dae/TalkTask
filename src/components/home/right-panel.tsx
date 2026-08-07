@@ -5,6 +5,7 @@ import { request } from "@/lib/api/request";
 import { AppAIClientUnavailableError } from "@/lib/api/app-ai-request";
 import { createTask, getTask } from "@/lib/api/tasks";
 import type { TaskWithSubtasks } from "@/lib/api/tasks";
+import type { TrustableResource } from "@/lib/tavily";
 import { memory } from "@/lib/eazo-shim";
 
 const T = {
@@ -14,14 +15,8 @@ const T = {
   orange: "#E07B2A", purple: "#7C4DFF",
 } as const;
 
-export interface Resource {
-  type: "link" | "search" | "person" | "course";
-  title: string;
-  url?: string;
-  searchQuery?: string;
-  author?: string;
-  platform?: string;
-}
+// Resource 与 TrustableResource 对齐，保留 export 供外部兼容引用
+export type Resource = TrustableResource;
 
 type Phase = "idle"|"intent"|"search"|"plan"|"validate"|"revise"|"saving"|"done"|"error";
 interface StreamState { phase: Phase; label: string; deltaLen: number; errorMsg: string; }
