@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEazo } from "@/lib/eazo-shim";
 import { auth } from "@/lib/eazo-shim";
 import {
-  deleteTask, getSubtasksWithTask, getTasksWithSubtasks,
-  toggleSubtask, updateTaskStatusApi,
+  getSubtasksWithTask, getTasksWithSubtasks,
+  toggleSubtask, updateTaskStatusApi, postponeSubtask, unpostponeSubtask,
 } from "@/lib/api/tasks";
 import type { SubtaskWithTask } from "@/lib/api/tasks";
 import { RightPanel, useAnalysisPanel } from "./right-panel";
@@ -49,7 +49,20 @@ export function HomePage() {
   const [detailSubtask, setDetailSubtask] = useState<SubtaskWithTask | null>(null);
   const [congrats, setCongrats] = useState<CongratsData | null>(null);
   const [highlightedSubtaskId, setHighlightedSubtaskId] = useState<string | null>(null);
+  // 键盘导航当前选中的单个子任务（Space/↑↓ 的作用目标）
+  const [activeSubtaskId, setActiveSubtaskId] = useState<string | null>(null);
+  // 待确认延迟的子任务（打开确认弹窗）
+  const [postponeTarget, setPostponeTarget] = useState<SubtaskWithTask | null>(null);
+  // 轻量 Toast 提示（失败提示 / 撤销等）
+  const [toast, setToast] = useState<{ msg: string; actionLabel?: string; onAction?: () => void } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string, actionLabel?: string, onAction?: () => void) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ msg, actionLabel, onAction });
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
+  }, []);
 
   const {
     entries, focusedId, setFocusedId,
@@ -81,19 +94,22 @@ export function HomePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries.map((e) => e.stream.phase).join(",")]);
 
-  const handleDeleteTask = async (taskId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    await deleteTask(taskId).catch(() => {});
-    setSubtaskRows((prev) => prev.filter((s) => s.taskId !== taskId));
-    removeEntry(taskId);
-  };
-
   const handleToggleSubtask = useCallback(async (taskId: string, subtaskId: string, current: boolean) => {
     const next = !current;
     setSubtaskRows((prev) => prev.map((s) => s.id === subtaskId ? { ...s, completed: next } : s));
     setDetailSubtask((prev) => prev?.id === subtaskId ? { ...prev, completed: next } : prev);
-    await toggleSubtask(taskId, subtaskId, next).catch(() => {});
-    // 完成时刷新 streak 统计
+
+    // 后端持久化：失败则回滚本地状态，避免"假完成"后刷新丢失
+    try {
+      await toggleSubtask(taskId, subtaskId, next);
+    } catch {
+      setSubtaskRows((prev) => prev.map((s) => s.id === subtaskId ? { ...s, completed: current } : s));
+      setDetailSubtask((prev) => prev?.id === subtaskId ? { ...prev, completed: current } : prev);
+      showToast(next ? "标记完成失败，已撤回，请重试" : "取消完成失败，已撤回，请重试");
+      return;
+    }
+
+    // 仅在成功持久化后才计入 streak 与触发完成庆祝
     if (next) setStreakTick(t => t + 1);
     setSubtaskRows((prev) => {
       const rows = prev.filter((s) => s.taskId === taskId);
@@ -106,7 +122,42 @@ export function HomePage() {
       }
       return prev;
     });
-  }, []);
+  }, [showToast]);
+
+  // 确认延迟：startDay += 1，乐观更新本地 + 调后端重排；成功后给"已延迟 · 撤销"Toast
+  const confirmPostpone = useCallback(async (row: SubtaskWithTask) => {
+    setPostponeTarget(null);
+    // 乐观更新：本地 startDay+1，卡片会随之重新分组到次日
+    setSubtaskRows((prev) => prev.map((s) =>
+      s.id === row.id ? { ...s, startDay: s.startDay + 1 } : s));
+    const newStartDay = await postponeSubtask(row.taskId, row.id).catch(() => null);
+    if (newStartDay === null) {
+      // 失败回滚
+      setSubtaskRows((prev) => prev.map((s) =>
+        s.id === row.id ? { ...s, startDay: s.startDay - 1 } : s));
+      showToast("延迟失败，请重试");
+      return;
+    }
+    // 成功：提示去向（避免任务"悄悄挪走"找不到）+ 撤销入口
+    showToast(`已延迟到明天，"${row.title}"移到次日`, "撤销", () => {
+      setSubtaskRows((prev) => prev.map((s) =>
+        s.id === row.id ? { ...s, startDay: Math.max(0, s.startDay - 1) } : s));
+      unpostponeSubtask(row.taskId, row.id).catch(() => {
+        setSubtaskRows((prev) => prev.map((s) =>
+          s.id === row.id ? { ...s, startDay: s.startDay + 1 } : s));
+        showToast("撤销失败，请重试");
+      });
+    });
+  }, [showToast]);
+
+  // 跳过：标记完成，并给"已跳过 · 撤销"Toast
+  const handleSkip = useCallback(async (row: SubtaskWithTask) => {
+    if (row.completed) return;
+    await handleToggleSubtask(row.taskId, row.id, false);
+    showToast(`已跳过"${row.title}"`, "撤销", () => {
+      handleToggleSubtask(row.taskId, row.id, true);
+    });
+  }, [handleToggleSubtask, showToast]);
 
   const handleJumpToSubtask = useCallback((
     subtaskId: string, taskStartDate: string | null, startDay: number, durationDays: number,
@@ -131,6 +182,8 @@ export function HomePage() {
   }, []);
 
   const filteredRows = sortSubtasks(filterSubtasksByTime(subtaskRows, timeFilter));
+  // 扁平化的可见顺序（供 ↑↓ 键盘导航）
+  const flatRows = buildTimelineSections(filteredRows).flatMap(s => s.rows);
   const todayStr = new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
 
   // ── 全局键盘快捷键 ──────────────────────────────────────────────
@@ -152,29 +205,55 @@ export function HomePage() {
           setDetailSubtask(null);
         } else if (showInput) {
           setShowInput(false);
+        } else if (activeSubtaskId) {
+          setActiveSubtaskId(null);
         } else if (focusedId) {
           setFocusedId(null);
         }
+      } else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !showInput && !detailSubtask && !congrats) {
+        // ↑↓ → 在可见卡片间移动"当前选中"
+        if (flatRows.length === 0) return;
+        e.preventDefault();
+        const idx = flatRows.findIndex(r => r.id === activeSubtaskId);
+        let next: number;
+        if (idx === -1) {
+          next = e.key === "ArrowDown" ? 0 : flatRows.length - 1;
+        } else {
+          next = e.key === "ArrowDown"
+            ? Math.min(flatRows.length - 1, idx + 1)
+            : Math.max(0, idx - 1);
+        }
+        const target = flatRows[next];
+        if (target) {
+          setActiveSubtaskId(target.id);
+          setFocusedId(target.taskId);
+          setTimeout(() => {
+            document.getElementById(`subtask-card-${target.id}`)
+              ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          }, 0);
+        }
       } else if (e.key === " ") {
-        // Space → toggle 当前聚焦子任务中第一个未完成的
-        if (!focusedId) return;
-        const first = subtaskRows.find(s => s.taskId === focusedId && !s.completed);
-        if (first) {
+        // Space → toggle 当前选中的子任务（无选中则退回到聚焦大任务的第一个未完成项）
+        let target = activeSubtaskId ? subtaskRows.find(s => s.id === activeSubtaskId) : undefined;
+        if (!target && focusedId) {
+          target = subtaskRows.find(s => s.taskId === focusedId && !s.completed);
+        }
+        if (target) {
           e.preventDefault();
-          handleToggleSubtask(first.taskId, first.id, first.completed);
+          handleToggleSubtask(target.taskId, target.id, target.completed);
         }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [showInput, detailSubtask, congrats, focusedId, subtaskRows, handleToggleSubtask, setFocusedId]);
+  }, [showInput, detailSubtask, congrats, focusedId, activeSubtaskId, subtaskRows, handleToggleSubtask, setFocusedId]);
 
   return (
     <div style={{ background: T.bg, height: "100%", display: "flex", flexDirection: "column", fontFamily: "var(--font-geist), Geist, system-ui, sans-serif" }}>
       <header style={{ background: T.surface, borderBottom: `1px solid ${T.line}`, padding: "0 24px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
           <div style={{ color: T.ink, fontWeight: 700, fontSize: 17, letterSpacing: "-0.04em" }}>AutoTask</div>
-          <div style={{ color: T.muted, fontSize: 11, marginTop: 1 }}>订单式任务系统原型</div>
+          <div style={{ color: T.muted, fontSize: 11, marginTop: 1 }}>把目标拆成每天能完成的小步骤</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {!authLoading && !user && <button onClick={() => auth.login().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: `1px solid ${T.line}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}>登录</button>}
@@ -197,7 +276,7 @@ export function HomePage() {
           {/* 连续性统计条 */}
           {user && <StreakBar refreshTick={streakTick} />}
 
-          <div style={{ flex: 1, overflowY: "auto" }}>
+          <div className="canvas-scroll" style={{ flex: 1, overflowY: "auto" }}>
             {authLoading || fetching ? (
               <div style={{ color: T.muted, fontSize: 13, padding: "40px 24px", textAlign: "center" }}>加载中…</div>
             ) : !user ? (
@@ -268,12 +347,13 @@ export function HomePage() {
                         <TimelineCard
                           row={row}
                           isSelected={focusedId === row.taskId}
+                          isActive={activeSubtaskId === row.id}
                           isHighlighted={highlightedSubtaskId === row.id}
                           onOpen={() => setDetailSubtask(row)}
-                          onSelect={() => { setFocusedId(row.taskId); focusTask(row.taskId); }}
-                          onDeleteTask={handleDeleteTask}
+                          onSelect={() => { setActiveSubtaskId(row.id); setFocusedId(row.taskId); focusTask(row.taskId); }}
                           onToggle={(e) => { e.stopPropagation(); handleToggleSubtask(row.taskId, row.id, row.completed); }}
-                          onSkip={(e) => { e.stopPropagation(); if (!row.completed) handleToggleSubtask(row.taskId, row.id, row.completed); }}
+                          onSkip={(e) => { e.stopPropagation(); handleSkip(row); }}
+                          onPostpone={(e) => { e.stopPropagation(); setPostponeTarget(row); }}
                         />
                       </div>
                     ))}
@@ -288,11 +368,12 @@ export function HomePage() {
           onToggleSubtask={handleToggleSubtask} onJumpToSubtask={handleJumpToSubtask} />
       </div>
 
-      <footer style={{ background: T.surface, borderTop: `1px solid ${T.line}`, padding: "7px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+      <footer className="kbd-footer" style={{ background: T.surface, borderTop: `1px solid ${T.line}`, padding: "7px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <span style={{ color: T.muted, fontSize: 12 }}>今天：{todayStr}</span>
         <span style={{ color: T.muted, fontSize: 11, display: "flex", gap: 12 }}>
           <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>N</kbd> 新建</span>
-          <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>Space</kbd> 完成</span>
+          <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>↑↓</kbd> 选择</span>
+          <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>Space</kbd> 完成选中</span>
           <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>Esc</kbd> 关闭</span>
         </span>
       </footer>
@@ -300,6 +381,59 @@ export function HomePage() {
       {showInput && <NewTaskInput onClose={() => setShowInput(false)} onSubmit={(goal) => startAnalysis(goal)} />}
       {detailSubtask && <SubtaskDetailModal row={detailSubtask} onClose={() => setDetailSubtask(null)} onToggle={() => handleToggleSubtask(detailSubtask.taskId, detailSubtask.id, detailSubtask.completed)} onOpenTask={() => { router.push(`/task/${detailSubtask.taskId}`); setDetailSubtask(null); }} />}
       {congrats && <CongratulationsModal data={congrats} onClose={() => setCongrats(null)} onLearnMore={(taskId) => { setFocusedId(taskId); focusTask(taskId); setCongrats(null); }} />}
+
+      {/* 延迟确认弹窗 */}
+      {postponeTarget && (
+        <>
+          <div onClick={() => setPostponeTarget(null)} style={{ position: "fixed", inset: 0, background: "rgba(17,17,17,0.25)", zIndex: 300, backdropFilter: "blur(2px)" }} />
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+            background: T.surface, border: `1px solid ${T.line}`, borderRadius: 16,
+            padding: "22px 22px 18px", width: "min(360px, 90vw)", zIndex: 301,
+            boxShadow: "0 20px 60px rgba(17,17,17,0.12)", display: "flex", flexDirection: "column", gap: 14,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 26 }}>⏭</span>
+              <div>
+                <div style={{ color: T.ink, fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em" }}>延迟一天</div>
+                <div style={{ color: T.muted, fontSize: 12, marginTop: 2 }}>排期将顺延，其它任务不受影响</div>
+              </div>
+            </div>
+            <div style={{ background: T.soft, borderRadius: 10, padding: "10px 12px", color: T.ink, fontSize: 13, lineHeight: 1.5 }}>
+              确定把"<span style={{ fontWeight: 600 }}>{postponeTarget.title}</span>"往后延迟一天吗？
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => confirmPostpone(postponeTarget)}
+                style={{ flex: 1, background: T.accent, color: "#fff", border: "none", borderRadius: 10, padding: "10px 0", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              >确定延迟</button>
+              <button
+                onClick={() => setPostponeTarget(null)}
+                style={{ background: T.soft, color: T.muted, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 16px", fontSize: 13, cursor: "pointer" }}
+              >取消</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 轻量 Toast：失败提示 / 撤销 */}
+      {toast && (
+        <div style={{
+          position: "fixed", left: "50%", bottom: 84, transform: "translateX(-50%)",
+          zIndex: 400, background: "rgba(17,17,17,0.92)", color: "#fff",
+          borderRadius: 12, padding: "11px 16px", fontSize: 13,
+          display: "flex", alignItems: "center", gap: 14,
+          boxShadow: "0 8px 30px rgba(17,17,17,0.25)", maxWidth: "min(440px, 92vw)",
+        }}>
+          <span style={{ lineHeight: 1.4 }}>{toast.msg}</span>
+          {toast.actionLabel && toast.onAction && (
+            <button
+              onClick={() => { toast.onAction?.(); setToast(null); }}
+              style={{ background: "transparent", color: "#7FB0FF", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, flexShrink: 0, padding: 0 }}
+            >{toast.actionLabel}</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
