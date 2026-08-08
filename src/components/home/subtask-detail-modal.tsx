@@ -273,6 +273,28 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
         )}
 
         {/* Actions */}
+        {/* 「开始学习」CTA —— 取第一个可访问资源 */}
+        {(() => {
+          const firstResource = resources.find(r => !!(r.resolved_url ?? r.url) && r.url_status !== "not_found" && r.url_status !== "dead");
+          const firstUrl = firstResource ? (firstResource.resolved_url ?? firstResource.url) : undefined;
+          if (!firstUrl || row.completed) return null;
+          return (
+            <button
+              onClick={() => {
+                window.open(firstUrl, "_blank", "noopener");
+              }}
+              style={{
+                width: "100%", background: T.accent, color: "#fff",
+                border: "none", borderRadius: 10, padding: "12px 0",
+                fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em",
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                boxShadow: "0 4px 14px rgba(59,122,255,0.25)",
+              }}
+            >
+              <span>🚀</span> 开始学习
+            </button>
+          );
+        })()}
         <div style={{ display: "flex", gap: 8, paddingTop: 2 }}>
           <button
             onClick={() => { onToggle(); onClose(); }}
