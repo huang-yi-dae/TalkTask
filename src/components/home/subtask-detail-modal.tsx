@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { SubtaskWithTask } from "@/lib/api/tasks";
 import { getSubtaskDateRange } from "./subtask-row";
 import {
@@ -74,6 +75,44 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
   const verifiedCount = resources.filter((r) => r.trust_level === "verified").length;
   const hasVerified = verifiedCount > 0;
 
+  // ── 学习 Prompt：搜索无结果时，供用户复制到外部 AI ──
+  const [copied, setCopied] = useState(false);
+  const buildLearnPrompt = (): string => {
+    const bloomMap: Record<number, string> = { 1: "记忆", 2: "理解", 3: "应用", 4: "分析", 5: "评估", 6: "创造" };
+    const lines: string[] = [];
+    lines.push(`我正在学习「${row.taskTitle}」，当前要掌握的具体环节是：${row.title}`);
+    if (row.description) lines.push(`\n这个环节的说明：${row.description}`);
+    if (row.topic) lines.push(`所属主题领域：${row.topic}`);
+    if (row.bloomLevel && bloomMap[row.bloomLevel]) {
+      lines.push(`期望达到的认知层级：${bloomMap[row.bloomLevel]}（Bloom L${row.bloomLevel}）`);
+    }
+    if (keywords.length) lines.push(`关键概念：${keywords.join("、")}`);
+    lines.push(
+      `\n请作为该领域的资深老师，为我系统讲解这个环节。要求：`,
+      `1. 用通俗的语言讲清核心概念与原理；`,
+      `2. 给出 1-2 个贴近实际的例子；`,
+      `3. 指出常见误区或易错点；`,
+      `4. 最后给我 2-3 道可自测的练习题（附参考思路）。`,
+    );
+    return lines.join("\n");
+  };
+
+  const handleCopyPrompt = async () => {
+    const text = buildLearnPrompt();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // 降级：用临时 textarea
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(17,17,17,0.22)", zIndex: 200, backdropFilter: "blur(2px)" }} />
@@ -113,6 +152,36 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
         {/* Description */}
         <div style={{ background: T.soft, borderRadius: 10, padding: "12px 14px", color: row.description ? T.ink : T.muted, fontSize: 13, lineHeight: 1.65 }}>
           {row.description || "暂无详细说明"}
+        </div>
+
+        {/* AI 学习 Prompt：搜索无验证资源时作为主要学习入口，有资源时作为补充 */}
+        <div style={{
+          borderRadius: 10, padding: "12px 14px",
+          background: hasVerified ? T.soft : "rgba(59,122,255,0.05)",
+          border: hasVerified ? `1px solid ${T.line}` : "1px solid rgba(59,122,255,0.22)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 15 }}>🤖</span>
+            <span style={{ color: T.ink, fontSize: 12, fontWeight: 700, letterSpacing: "-0.01em" }}>
+              {hasVerified ? "让 AI 帮你讲解" : "没有现成资源？让 AI 讲给你听"}
+            </span>
+          </div>
+          <div style={{ color: T.muted, fontSize: 11, lineHeight: 1.5, marginBottom: 9 }}>
+            一键复制为这个环节量身生成的学习提示词，粘贴到 ChatGPT / DeepSeek / 豆包等任意 AI 即可开始学习。
+          </div>
+          <button
+            onClick={handleCopyPrompt}
+            style={{
+              width: "100%",
+              background: copied ? T.green : T.accent,
+              color: "#fff", border: "none", borderRadius: 9,
+              padding: "10px 0", fontSize: 13, fontWeight: 600, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              transition: "background 0.2s",
+            }}
+          >
+            {copied ? "✓ 已复制，去 AI 粘贴吧" : "📋 复制学习 Prompt"}
+          </button>
         </div>
 
         {/* Resources */}
