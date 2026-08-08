@@ -12,6 +12,11 @@
 import type { Subtask } from "@/lib/db/schema";
 import type { TaskWithSubtasks } from "@/lib/api/tasks";
 import { GanttChart } from "@/components/task/gantt-chart";
+import {
+  URL_STATUS_CONFIG,
+  FRESHNESS_CONFIG,
+  AUTHORITY_LABEL_CONFIG,
+} from "@/lib/resource-validator";
 
 // ─── Design tokens ──────────────────────────────────────────────────────
 const T = {
@@ -46,6 +51,14 @@ interface Resource {
   platform?: string;
   snippet?: string;
   trust_level?: "verified" | "search_only";
+  // 三维可信度字段
+  url_status?: string;
+  http_status?: number;
+  resolved_url?: string;
+  authority_score?: number;
+  authority_label?: string;
+  freshness?: string;
+  last_modified?: string;
 }
 
 // ─── 进度环 SVG ──────────────────────────────────────────────────────────
@@ -71,21 +84,20 @@ function ProgressRing({ pct, size = 72, color = T.accent }: {
 
 // ─── Bloom 进度轴 ────────────────────────────────────────────────────────
 function BloomAxis({ subtasks }: { subtasks: Subtask[] }) {
-  // 从子任务的 urgency 字段反推 bloom（urgency 1=高 bloom 5，urgency 5=bloom 1）
-  const bloomLevels = subtasks.map(s =>
-    s.urgency ? Math.max(1, Math.min(5, 6 - s.urgency)) : 2
-  );
-  const completedBlooms = subtasks
-    .filter(s => s.completed)
-    .map(s => s.urgency ? Math.max(1, Math.min(5, 6 - s.urgency)) : 2);
+  // 优先读真实 bloomLevel 字段，旧数据降级用 urgency 反推
+  const getBloom = (s: Subtask): number => {
+    if (s.bloomLevel && s.bloomLevel >= 1 && s.bloomLevel <= 6) return s.bloomLevel;
+    return s.urgency ? Math.max(1, Math.min(5, 6 - s.urgency)) : 2;
+  };
+
+  const bloomLevels = subtasks.map(getBloom);
+  const completedBlooms = subtasks.filter(s => s.completed).map(getBloom);
 
   const maxBloom = bloomLevels.length > 0 ? Math.max(...bloomLevels) : 3;
   const stages = BLOOM.slice(0, maxBloom);
 
   // 当前激活阶段：未完成子任务中最低 bloom
-  const remaining = subtasks
-    .filter(s => !s.completed)
-    .map(s => s.urgency ? Math.max(1, Math.min(5, 6 - s.urgency)) : 2);
+  const remaining = subtasks.filter(s => !s.completed).map(getBloom);
   const currentBloom = remaining.length > 0 ? Math.min(...remaining) : maxBloom;
   const allDone = subtasks.length > 0 && subtasks.every(s => s.completed);
 
@@ -181,10 +193,7 @@ function SubtaskItem({
     try { keywords = JSON.parse(subtask.keywords) as string[]; } catch { /* ignore */ }
   }
 
-  // 优先用真实 DB 字段，旧数据降级用 urgency 反推
-  const bloomRaw = subtask.bloomLevel
-    ? Math.max(1, Math.min(6, subtask.bloomLevel))
-    : (subtask.urgency ? Math.max(1, Math.min(5, 6 - subtask.urgency)) : 2);
+  const bloomRaw = subtask.urgency ? Math.max(1, Math.min(5, 6 - subtask.urgency)) : 2;
   const bloomStage = BLOOM[bloomRaw - 1];
 
   // 计算日期标签
@@ -338,27 +347,40 @@ function ResourcePanel({ subtasks }: { subtasks: Subtask[] }) {
           const clickable = !!(r.url || r.searchQuery);
           const typeIcon = r.type === "course" ? "📚" : r.type === "search" ? "🔎" : r.type === "person" ? "👤" : "🔗";
 
+          // 三维信号
+          const urlStatusKey = (r.url_status ?? "unchecked") as keyof typeof URL_STATUS_CONFIG;
+          const statusCfg = URL_STATUS_CONFIG[urlStatusKey] ?? URL_STATUS_CONFIG.unchecked;
+          const freshKey = (r.freshness ?? "unknown") as keyof typeof FRESHNESS_CONFIG;
+          const freshCfg = FRESHNESS_CONFIG[freshKey];
+          const authLabelKey = (r.authority_label ?? "unknown") as keyof typeof AUTHORITY_LABEL_CONFIG;
+          const authCfg = AUTHORITY_LABEL_CONFIG[authLabelKey];
+          const hasValidation = r.url_status !== undefined;
+          const isDead = r.url_status === "not_found" || r.url_status === "dead";
+
           return (
             <div
               key={i}
-              onClick={clickable ? () => {
-                if (r.url) window.open(r.url, "_blank", "noopener");
+              onClick={(clickable && !isDead) ? () => {
+                const target = r.resolved_url ?? r.url;
+                if (target) window.open(target, "_blank", "noopener");
                 else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener");
               } : undefined}
               style={{
                 display: "flex", alignItems: "flex-start", gap: 10,
                 padding: "10px 16px",
                 borderBottom: i < allResources.length - 1 ? `1px solid ${T.line}` : "none",
-                cursor: clickable ? "pointer" : "default",
-                background: isVerified ? "rgba(47,93,80,0.02)" : "transparent",
+                cursor: (clickable && !isDead) ? "pointer" : "default",
+                background: isDead ? "rgba(192,57,43,0.03)" : isVerified ? "rgba(47,93,80,0.02)" : "transparent",
+                opacity: isDead ? 0.65 : 1,
                 transition: "background 0.15s",
               }}
             >
               <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>{typeIcon}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                {/* 标题 + trust 徽章 */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: hasValidation ? 4 : 2 }}>
                   <span style={{
-                    fontSize: 12, fontWeight: 500, color: T.ink,
+                    fontSize: 12, fontWeight: 500, color: isDead ? T.muted : T.ink,
                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1,
                   }}>
                     {r.title}
@@ -372,9 +394,40 @@ function ResourcePanel({ subtasks }: { subtasks: Subtask[] }) {
                     {isVerified ? "✓ 已验证" : "🔎 搜索"}
                   </span>
                 </div>
-                {r.platform && (
-                  <div style={{ fontSize: 10, color: T.muted }}>{r.platform}</div>
+
+                {/* 三维信号徽章行 */}
+                {hasValidation && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3, flexWrap: "wrap" }}>
+                    <span style={{
+                      fontSize: 9, fontWeight: 600, color: statusCfg.color,
+                      background: statusCfg.bg, border: `1px solid ${statusCfg.border}`,
+                      borderRadius: 4, padding: "1px 5px",
+                    }}>
+                      {statusCfg.icon} {statusCfg.label}
+                    </span>
+                    {r.authority_score !== undefined && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 600,
+                        color: r.authority_score >= 8 ? "#2F5D50" : r.authority_score >= 5 ? "#8B6A2E" : "#777B75",
+                        background: "rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.08)",
+                        borderRadius: 4, padding: "1px 5px",
+                      }}>
+                        {authCfg.icon} {authCfg.label} {r.authority_score}/10
+                      </span>
+                    )}
+                    {r.freshness && r.freshness !== "unknown" && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 600, color: freshCfg.color,
+                        background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.07)",
+                        borderRadius: 4, padding: "1px 5px",
+                      }}>
+                        {freshCfg.icon} {freshCfg.label}
+                      </span>
+                    )}
+                  </div>
                 )}
+
+                {r.platform && <div style={{ fontSize: 10, color: T.muted, marginBottom: 1 }}>{r.platform}</div>}
                 {r.snippet && (
                   <div style={{
                     fontSize: 10, color: T.muted, marginTop: 2, lineHeight: 1.45,
@@ -384,10 +437,13 @@ function ResourcePanel({ subtasks }: { subtasks: Subtask[] }) {
                     {r.snippet}
                   </div>
                 )}
-                {r.url && (
+                {!isDead && (r.resolved_url ?? r.url) && (
                   <div style={{ fontSize: 10, color: accentColor, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {r.url}
+                    {r.resolved_url ?? r.url}
                   </div>
+                )}
+                {isDead && (
+                  <div style={{ fontSize: 10, color: "#C0392B", marginTop: 2 }}>⚠ 该链接当前不可访问</div>
                 )}
                 {!r.url && r.searchQuery && (
                   <div style={{ fontSize: 10, color: accentColor, marginTop: 2, fontFamily: "var(--font-geist-mono), monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -395,9 +451,8 @@ function ResourcePanel({ subtasks }: { subtasks: Subtask[] }) {
                   </div>
                 )}
               </div>
-              {clickable && (
-                <span style={{ color: accentColor, fontSize: 12, flexShrink: 0, marginTop: 2 }}>→</span>
-              )}
+              {(clickable && !isDead) && <span style={{ color: accentColor, fontSize: 12, flexShrink: 0, marginTop: 2 }}>→</span>}
+              {isDead && <span style={{ color: "#C0392B", fontSize: 12, flexShrink: 0, marginTop: 2 }}>✕</span>}
             </div>
           );
         })}
