@@ -128,6 +128,10 @@ body {
 /* ── iOS zoom prevention ─────────────────────────────────────────── */
 @media (max-width: 640px) {
   input, textarea, select { font-size: 16px !important; }
+  /* 移动端：给左侧内容底部留出 AI 面板触发条(46px)的空间 */
+  .canvas-scroll { padding-bottom: 62px !important; }
+  /* 移动端：隐藏键盘快捷键页脚（触控无意义且会被底部条遮挡） */
+  .kbd-footer { display: none !important; }
 }
 
 /* ── Tailwind base ───────────────────────────────────────────────── */
