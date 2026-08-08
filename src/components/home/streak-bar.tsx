@@ -1,10 +1,6 @@
 "use client";
-/**
- * streak-bar.tsx — 学习连续性统计条
- * 展示：🔥连续天数 | 今日进度 | 本周完成率 | 累计完成数
- */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { request } from "@/lib/api/request";
 
 const T = {
@@ -15,119 +11,102 @@ const T = {
 
 interface Stats {
   streak: number;
-  todayCompleted: number;
-  weeklyCompleted: number;
-  weeklyTotal: number;
+  todayCount: number;
+  weekCount: number;
   totalCompleted: number;
-  activeTasks: number;
+  activeTaskCount: number;
 }
 
 interface Props {
-  /** 外部触发刷新（子任务完成后） */
-  refreshTrigger?: number;
+  /** 外部触发刷新用的计数器（每次完成子任务 +1）*/
+  refreshTick?: number;
 }
 
-export function StreakBar({ refreshTrigger = 0 }: Props) {
+export function StreakBar({ refreshTick = 0 }: Props) {
   const [stats, setStats] = useState<Stats | null>(null);
 
-  useEffect(() => {
-    request("/api/user/stats")
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => d && setStats(d as Stats))
-      .catch(() => {});
-  }, [refreshTrigger]);
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await request("/api/user/stats");
+      if (res.ok) setStats(await res.json() as Stats);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchStats(); }, [fetchStats, refreshTick]);
 
   if (!stats) return null;
 
-  const weekPct = stats.weeklyTotal > 0
-    ? Math.round((stats.weeklyCompleted / stats.weeklyTotal) * 100)
-    : 0;
+  const { streak, todayCount, weekCount, totalCompleted, activeTaskCount } = stats;
+
+  // 本周目标：活跃任务 × 1.5（约每天完成 1.5 个子任务）
+  const weekGoal = Math.max(activeTaskCount * 3, 5);
+  const weekPct = Math.min(1, weekCount / weekGoal);
+  const weekBarW = Math.round(weekPct * 60); // 最大 60px
 
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: 0,
-      background: T.surface, borderBottom: `1px solid ${T.line}`,
-      padding: "0 16px", height: 40, flexShrink: 0, overflowX: "auto",
+      display: "flex", alignItems: "center", gap: 14,
+      padding: "7px 18px",
+      borderBottom: `1px solid ${T.line}`,
+      background: T.soft,
+      flexShrink: 0,
+      flexWrap: "wrap",
+      rowGap: 4,
     }}>
-      {/* 🔥 连续天数 */}
-      <StatCell
-        icon={stats.streak >= 3 ? "🔥" : "📅"}
-        value={String(stats.streak)}
-        label={`天连续`}
-        color={stats.streak >= 7 ? "#f97316" : stats.streak >= 3 ? "#E07B2A" : T.muted}
-        highlight={stats.streak >= 3}
-      />
 
-      <Divider />
-
-      {/* ✅ 今日完成 */}
-      <StatCell
-        icon="✓"
-        value={String(stats.todayCompleted)}
-        label="今天"
-        color={stats.todayCompleted > 0 ? T.green : T.muted}
-      />
-
-      <Divider />
-
-      {/* 📊 本周进度 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px", flexShrink: 0 }}>
-        <span style={{ fontSize: 10, color: T.muted }}>本周</span>
-        <div style={{ width: 48, height: 4, background: T.soft, borderRadius: 2, overflow: "hidden" }}>
-          <div style={{
-            height: 4, width: `${weekPct}%`,
-            background: weekPct >= 80 ? T.green : weekPct >= 40 ? T.accent : T.orange,
-            borderRadius: 2, transition: "width 0.4s",
-          }} />
-        </div>
-        <span style={{ fontSize: 10, fontWeight: 600, color: T.ink, fontFamily: "var(--font-geist-mono), monospace" }}>
-          {weekPct}%
+      {/* 连续天数 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span style={{ fontSize: 13 }}>{streak >= 3 ? "🔥" : "📅"}</span>
+        <span style={{
+          fontSize: 11, fontWeight: 700,
+          color: streak >= 3 ? "#E07B2A" : T.ink,
+          letterSpacing: "-0.01em",
+        }}>
+          {streak > 0 ? `${streak} 天连续` : "今日开始"}
         </span>
       </div>
 
-      <Divider />
+      <span style={{ color: T.line, fontSize: 10 }}>|</span>
 
-      {/* 🏅 累计完成 */}
-      <StatCell
-        icon="🏅"
-        value={String(stats.totalCompleted)}
-        label="累计"
-        color={T.muted}
-      />
+      {/* 今日完成 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span style={{ fontSize: 10, color: T.muted }}>今日</span>
+        <span style={{
+          fontSize: 11, fontWeight: 600,
+          color: todayCount > 0 ? T.green : T.muted,
+        }}>
+          ✓ {todayCount}
+        </span>
+      </div>
 
-      {/* 活跃任务数（只在有多个时显示）*/}
-      {stats.activeTasks > 1 && (
-        <>
-          <Divider />
-          <StatCell
-            icon="📋"
-            value={String(stats.activeTasks)}
-            label="进行中"
-            color={T.accent}
-          />
-        </>
-      )}
+      <span style={{ color: T.line, fontSize: 10 }}>|</span>
+
+      {/* 本周进度条 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 10, color: T.muted }}>本周</span>
+        <div style={{
+          width: 64, height: 5, background: T.line,
+          borderRadius: 3, overflow: "hidden",
+        }}>
+          <div style={{
+            width: weekBarW, height: "100%",
+            background: weekPct >= 1 ? T.green : T.accent,
+            borderRadius: 3,
+            transition: "width 0.4s ease",
+          }} />
+        </div>
+        <span style={{ fontSize: 10, color: T.muted, minWidth: 24 }}>
+          {weekCount}/{weekGoal}
+        </span>
+      </div>
+
+      <span style={{ color: T.line, fontSize: 10 }}>|</span>
+
+      {/* 历史累计 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span style={{ fontSize: 10 }}>{totalCompleted >= 50 ? "🏅" : totalCompleted >= 20 ? "⭐" : "✨"}</span>
+        <span style={{ fontSize: 10, color: T.muted }}>{totalCompleted} 累计</span>
+      </div>
     </div>
   );
-}
-
-function StatCell({ icon, value, label, color, highlight }: {
-  icon: string; value: string; label: string; color: string; highlight?: boolean;
-}) {
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 4,
-      padding: "0 12px", flexShrink: 0,
-      background: highlight ? `${color}10` : "transparent",
-      borderRadius: 6,
-    }}>
-      <span style={{ fontSize: 12 }}>{icon}</span>
-      <span style={{ fontSize: 13, fontWeight: 700, color, letterSpacing: "-0.03em" }}>{value}</span>
-      <span style={{ fontSize: 10, color: T.muted }}>{label}</span>
-    </div>
-  );
-}
-
-function Divider() {
-  return <div style={{ width: 1, height: 16, background: T.line, flexShrink: 0 }} />;
 }
