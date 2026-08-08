@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { request } from "@/lib/api/request";
 import { AppAIClientUnavailableError } from "@/lib/api/app-ai-request";
 import { createTask, getTask } from "@/lib/api/tasks";
@@ -19,8 +19,21 @@ const T = {
 export type Resource = TrustableResource;
 
 type Phase = "idle"|"intent"|"search"|"plan"|"validate"|"revise"|"saving"|"done"|"error";
-interface StreamState { phase: Phase; label: string; deltaLen: number; errorMsg: string; }
+interface StreamState { phase: Phase; label: string; deltaLen: number; errorMsg: string; startedAt?: number; }
 const INIT_STREAM: StreamState = { phase: "idle", label: "", deltaLen: 0, errorMsg: "" };
+
+// 分析每阶段「约还需 XX 秒」倒计时徽章
+// TalkTask 用缓冲式 ticker 推进 phase，deltaLen 即已用秒数；
+// 结合 PHASE_TIMELINE 推算当前阶段剩余时间（区别于 MyTask 流式 startedAt 模型）。
+function getEtaLabel(phase: Phase, elapsedSec: number): string | null {
+  if (phase === "done" || phase === "idle" || phase === "error") return null;
+  const idx = PHASE_TIMELINE.findIndex(([, p]) => p === phase);
+  if (idx < 0) return null;
+  const startSec = PHASE_TIMELINE[idx][0];
+  const endSec = idx + 1 < PHASE_TIMELINE.length ? PHASE_TIMELINE[idx + 1][0] : startSec + 15;
+  const remaining = endSec - elapsedSec;
+  return remaining <= 2 ? "即将完成…" : `约还需 ${Math.round(remaining)} 秒`;
+}
 
 const PIPELINE_STEPS: Array<{ key: Phase; label: string; icon: string }> = [
   { key: "intent",   label: "解析学习意图", icon: "🧠" },
@@ -81,7 +94,7 @@ export function useAnalysisPanel() {
     const patchStream = (s: Partial<StreamState>) =>
       setEntries((prev) => prev.map((e) => e.taskId === taskId ? { ...e, stream: { ...e.stream, ...s } } : e));
 
-    patchStream({ phase: "intent", label: PHASE_LABELS.intent, deltaLen: 0, errorMsg: "" });
+    patchStream({ phase: "intent", label: PHASE_LABELS.intent, deltaLen: 0, errorMsg: "", startedAt: Date.now() });
 
     // The analyze route buffers its whole 4-stage LLM pipeline into one JSON
     // response, so the client gets no incremental signal. This ticker
@@ -181,6 +194,13 @@ export function useAnalysisPanel() {
 function PipelineSteps({ stream }: { stream: StreamState }) {
   const curIdx = PHASE_ORDER.indexOf(stream.phase);
   const isError = stream.phase === "error";
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (stream.phase === "done" || stream.phase === "idle" || stream.phase === "error") return;
+    const t = setInterval(() => tick(n => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [stream.phase]);
+  const etaLabel = getEtaLabel(stream.phase, stream.deltaLen);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       {PIPELINE_STEPS.map((step, i) => {
@@ -197,7 +217,12 @@ function PipelineSteps({ stream }: { stream: StreamState }) {
               <div style={{ color: isDone ? T.muted : isActive ? T.ink : T.muted, fontSize: 12, fontWeight: isActive ? 600 : 400 }}>{step.icon} {step.label}</div>
               {isActive && stream.label && <div style={{ color: T.accent, fontSize: 9, marginTop: 1, fontFamily: "var(--font-geist-mono), monospace" }}>{stream.label}</div>}
             </div>
-            {isActive && stream.deltaLen > 0 && <span style={{ color: T.muted, fontSize: 9, fontFamily: "var(--font-geist-mono), monospace", flexShrink: 0 }}>{stream.deltaLen}s</span>}
+            {isActive && etaLabel && (
+              <span style={{ color: T.accent, fontSize: 9, fontFamily: "var(--font-geist-mono), monospace", flexShrink: 0, opacity: 0.8, background: "rgba(59,122,255,0.08)", padding: "1px 5px", borderRadius: 4 }}>
+                {etaLabel}
+              </span>
+            )}
+            {isActive && !etaLabel && stream.deltaLen > 0 && <span style={{ color: T.muted, fontSize: 9, fontFamily: "var(--font-geist-mono), monospace", flexShrink: 0 }}>{stream.deltaLen}s</span>}
           </div>
         );
       })}
@@ -254,13 +279,36 @@ export interface RightPanelProps {
 
 export function RightPanel({ entries, focusedId, setFocusedId, regenAnalysis, removeEntry, onToggleSubtask, onJumpToSubtask }: RightPanelProps) {
   const focused = entries.find((e) => e.taskId === focusedId) ?? entries[0] ?? null;
+  const [collapsed, setCollapsed] = useState(false);
+
+  // 有正在运行的 entry 时自动展开
+  const hasActive = entries.some(e => e.stream.phase !== "idle" && e.stream.phase !== "done" && e.stream.phase !== "error");
+  useEffect(() => { if (hasActive) setCollapsed(false); }, [hasActive]);
+
   return (
-    <div style={{ width: 340, flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: T.surface, borderLeft: `1px solid ${T.line}` }}>
-      <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.line}`, flexShrink: 0 }}>
-        <div style={{ color: T.ink, fontWeight: 600, fontSize: 14, letterSpacing: "-0.02em" }}>AI 分析面板</div>
-        <div style={{ color: T.muted, fontSize: 11, marginTop: 2 }}>意图→资源→计划→核查 · 全局排期</div>
+    <div style={{ width: collapsed ? 36 : 340, flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: T.surface, borderLeft: `1px solid ${T.line}`, transition: "width 0.25s cubic-bezier(0.4,0,0.2,1)" }}>
+      {/* 面板标题栏 + 折叠按钮 */}
+      <div style={{ padding: "12px 8px 12px 16px", borderBottom: `1px solid ${T.line}`, flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}>
+        {!collapsed && (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: T.ink, fontWeight: 600, fontSize: 14, letterSpacing: "-0.02em" }}>AI 分析面板</div>
+            <div style={{ color: T.muted, fontSize: 11, marginTop: 2 }}>意图→资源→计划→核查 · 全局排期</div>
+          </div>
+        )}
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          title={collapsed ? "展开面板" : "收起面板"}
+          style={{
+            width: 24, height: 24, borderRadius: 6, border: "none",
+            background: T.soft, color: T.muted, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 13, transition: "all 0.15s", flexShrink: 0,
+          }}
+        >
+          {collapsed ? "❯" : "❮"}
+        </button>
       </div>
-      {entries.length > 1 && (
+      {!collapsed && entries.length > 1 && (
         <div style={{ display: "flex", gap: 4, padding: "8px 12px", overflowX: "auto", borderBottom: `1px solid ${T.line}`, flexShrink: 0 }}>
           {entries.map((e) => {
             const running = !["idle","done","error"].includes(e.stream.phase);
@@ -273,9 +321,11 @@ export function RightPanel({ entries, focusedId, setFocusedId, regenAnalysis, re
           })}
         </div>
       )}
-      <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
-        {!focused ? <EmptyState /> : <EntryDetail entry={focused} onRegen={regenAnalysis} onRemove={removeEntry} onToggleSubtask={onToggleSubtask} onJumpToSubtask={onJumpToSubtask} />}
-      </div>
+      {!collapsed && (
+        <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+          {!focused ? <EmptyState /> : <EntryDetail entry={focused} onRegen={regenAnalysis} onRemove={removeEntry} onToggleSubtask={onToggleSubtask} onJumpToSubtask={onJumpToSubtask} />}
+        </div>
+      )}
     </div>
   );
 }
