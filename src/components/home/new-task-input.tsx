@@ -123,9 +123,22 @@ export function NewTaskInput({ onClose, onSubmit }: Props) {
     onClose();
   };
 
+  // 一键填入示例
+  const handleExample = (text: string) => {
+    setGoal(text);
+    setTimeout(() => ref.current?.focus(), 0);
+  };
+
+  const EXAMPLES = [
+    { icon: "🐍", label: "Python 入门", value: "从零开始掌握 Python 基础，能写简单脚本" },
+    { icon: "📐", label: "高考数学", value: "高考数学冲刺，重点突破导数与概率" },
+    { icon: "🗣", label: "英语口语", value: "提升英语口语，能流利做5分钟自我介绍" },
+    { icon: "⚛️", label: "React 实战", value: "掌握 React Hooks，能独立开发 Todo 应用" },
+  ];
+
   const placeholder = detectedUrl
     ? "可以在链接后补充说明，例如：侧重学习 Hooks 部分"
-    : "你想学什么？\n例如：掌握 Python 基础 / 高考数学冲刺\n或者直接粘贴一个链接 🔗";
+    : "你想学什么？直接描述目标，或粘贴一个链接 🔗";
 
   return (
     <>
@@ -147,6 +160,40 @@ export function NewTaskInput({ onClose, onSubmit }: Props) {
           <div style={{ color: T.ink, fontWeight: 700, fontSize: 15, letterSpacing: "-0.03em" }}>新建学习任务</div>
           <button onClick={onClose} style={{ color: T.muted, background: "none", border: "none", cursor: "pointer", fontSize: 20, lineHeight: 1 }}>×</button>
         </div>
+
+        {/* 示例卡片（输入为空时展示） */}
+        {!goal.trim() && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {EXAMPLES.map((ex) => (
+              <button
+                key={ex.label}
+                onClick={() => handleExample(ex.value)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 5,
+                  padding: "6px 10px",
+                  background: T.soft, border: `1px solid ${T.line}`,
+                  borderRadius: 8, cursor: "pointer",
+                  fontSize: 12, color: T.muted, fontWeight: 500,
+                  transition: "all 0.15s",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLButtonElement).style.background = "rgba(59,122,255,0.07)";
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(59,122,255,0.3)";
+                  (e.currentTarget as HTMLButtonElement).style.color = T.accent;
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLButtonElement).style.background = T.soft;
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = T.line;
+                  (e.currentTarget as HTMLButtonElement).style.color = T.muted;
+                }}
+              >
+                <span style={{ fontSize: 13 }}>{ex.icon}</span>
+                {ex.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* 输入框 */}
         <textarea
