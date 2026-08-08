@@ -17,6 +17,11 @@
  *   任何抓取失败 → 返回 null，主流程继续但不注入内容（不阻断任务创建）
  */
 
+import { fetchPdf, isPdfUrl } from "./fetchers/pdf";
+import { fetchBilibili } from "./fetchers/bilibili";
+import { fetchWorkspaceDoc } from "./fetchers/workspace";
+import { fetchWithFallback, isEmptyShell, detectJsRenderedPlatform } from "./fetchers/fallback";
+
 // ─── 类型定义 ────────────────────────────────────────────────────────────
 
 export type UrlType =
@@ -24,6 +29,10 @@ export type UrlType =
   | "github_file"
   | "youtube"
   | "bilibili"
+  | "pdf"
+  | "yuque"
+  | "feishu"
+  | "notion"
   | "article"
   | "docs"
   | "unknown";
@@ -69,6 +78,15 @@ export function detectUrlType(url: string): UrlType {
   }
   if (u.includes("youtube.com") || u.includes("youtu.be")) return "youtube";
   if (u.includes("bilibili.com") || u.includes("b23.tv")) return "bilibili";
+
+  // PDF 直链（扩展名检测优先）
+  if (isPdfUrl(url)) return "pdf";
+
+  // 文档协作平台
+  if (u.includes("yuque.com")) return "yuque";
+  if (u.includes("feishu.cn") || u.includes("larkoffice.com") || u.includes("larksuite.com")) return "feishu";
+  if (u.includes("notion.so") || u.includes("notion.site")) return "notion";
+
   if (
     u.includes("docs.") || u.includes("/docs/") || u.includes("documentation") ||
     u.includes("developer.mozilla") || u.includes("readthedocs") || u.includes("docs.python")
@@ -198,10 +216,27 @@ async function fetchWebPage(url: string, urlType: UrlType): Promise<FetchedConte
     if (!res.ok) return null;
 
     const contentType = res.headers.get("content-type") ?? "";
+
+    // PDF Content-Type → 转交 PDF 抓取器
+    if (contentType.includes("pdf")) {
+      return await fetchPdf(url);
+    }
+
     if (!contentType.includes("text/html")) return null;
 
     const html = await res.text();
     const { title, body } = extractTextFromHtml(html);
+
+    // 检测空壳（JS 渲染）
+    if (isEmptyShell(html, body)) {
+      return fetchWithFallback(url, urlType);
+    }
+
+    // 检测是否是已知 JS 渲染平台（即使拿到了少量文字，也给出提示）
+    const jsPlatform = detectJsRenderedPlatform(url);
+    if (jsPlatform && body.trim().length < 300) {
+      return fetchWithFallback(url, urlType);
+    }
 
     // 推断 tags
     const tags: string[] = [];
@@ -259,7 +294,15 @@ export async function fetchUrlContent(url: string): Promise<FetchedContent | nul
       case "youtube":
         return buildVideoContent(url, "youtube");
       case "bilibili":
-        return buildVideoContent(url, "bilibili");
+        return await fetchBilibili(url);
+      case "pdf":
+        return await fetchPdf(url);
+      case "yuque":
+        return await fetchWorkspaceDoc(url, "yuque");
+      case "feishu":
+        return await fetchWorkspaceDoc(url, "feishu");
+      case "notion":
+        return await fetchWithFallback(url, "notion");
       case "docs":
       case "article":
       default:
@@ -279,6 +322,10 @@ export function formatContentForPrompt(content: FetchedContent): string {
     github_file: "GitHub 文件",
     youtube:     "YouTube 视频",
     bilibili:    "Bilibili 视频",
+    pdf:         "PDF 文档",
+    yuque:       "语雀文档",
+    feishu:      "飞书文档",
+    notion:      "Notion 页面",
     article:     "网页文章",
     docs:        "技术文档",
     unknown:     "网页",

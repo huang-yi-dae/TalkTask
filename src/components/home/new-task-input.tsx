@@ -20,30 +20,87 @@ function extractUrlClient(input: string): string | null {
 }
 
 type UrlHint = {
-  type: "github_repo" | "github_file" | "youtube" | "bilibili" | "docs" | "article";
+  type: string;
   icon: string;
   label: string;
   tip: string;
+  /** 是否可以完整抓取内容（false = 仅推断主题，建议补充描述）*/
+  canFetch: boolean;
 };
 
 function detectUrlHint(url: string): UrlHint {
   const u = url.toLowerCase();
-  if (u.includes("github.com")) {
+
+  // GitHub
+  if (u.includes("github.com") || u.includes("raw.githubusercontent.com")) {
     if (u.includes("/blob/") || u.includes("/gist")) {
-      return { type: "github_file", icon: "📄", label: "GitHub 文件", tip: "AI 将读取文件内容，基于代码/文档规划学习路径" };
+      return { type: "github_file", icon: "📄", label: "GitHub 文件", tip: "AI 将读取文件内容，基于代码/文档规划学习路径", canFetch: true };
     }
-    return { type: "github_repo", icon: "📦", label: "GitHub 仓库", tip: "AI 将读取 README，了解项目内容后为你制定学习计划" };
+    return { type: "github_repo", icon: "📦", label: "GitHub 仓库", tip: "AI 将读取 README，了解项目后制定针对性学习计划", canFetch: true };
   }
+
+  // arXiv 论文
+  if (u.includes("arxiv.org") || u.includes("ar5iv.org")) {
+    return { type: "arxiv", icon: "🎓", label: "arXiv 论文", tip: "AI 将抓取摘要与章节结构，规划论文精读学习路径", canFetch: true };
+  }
+
+  // PDF 直链
+  if (u.endsWith(".pdf") || u.includes(".pdf?") || u.includes(".pdf#")) {
+    return { type: "pdf", icon: "📑", label: "PDF 文档", tip: "AI 将提取元数据与正文文字，根据文档内容规划学习路径", canFetch: true };
+  }
+
+  // 视频平台
   if (u.includes("youtube.com") || u.includes("youtu.be")) {
-    return { type: "youtube", icon: "🎬", label: "YouTube 视频", tip: "AI 将基于视频平台和链接推断主题，建议补充描述" };
+    return { type: "youtube", icon: "🎬", label: "YouTube 视频", tip: "视频字幕无法抓取，建议补充一句学习目标描述", canFetch: false };
   }
   if (u.includes("bilibili.com") || u.includes("b23.tv")) {
-    return { type: "bilibili", icon: "📺", label: "Bilibili 视频", tip: "AI 将基于视频平台和链接推断主题，建议补充描述" };
+    return { type: "bilibili", icon: "📺", label: "Bilibili 视频", tip: "AI 将读取视频标题、简介和 UP 主信息", canFetch: true };
   }
+
+  // 课程平台
+  if (u.includes("coursera.org")) {
+    return { type: "coursera", icon: "🎓", label: "Coursera 课程", tip: "AI 将抓取课程大纲、评分与技能标签，规划学习顺序", canFetch: true };
+  }
+  if (u.includes("edx.org")) {
+    return { type: "edx", icon: "📚", label: "edX 课程", tip: "AI 将抓取课程大纲与介绍，帮你高效规划学习路径", canFetch: true };
+  }
+
+  // 包管理
+  if (u.includes("npmjs.com/package/")) {
+    return { type: "npm", icon: "📦", label: "npm 包", tip: "AI 将读取包描述与依赖，规划该库的学习与使用路径", canFetch: true };
+  }
+  if (u.includes("pypi.org/project/")) {
+    return { type: "pypi", icon: "🐍", label: "PyPI 包", tip: "AI 将读取包描述与依赖，规划该 Python 库的学习路径", canFetch: true };
+  }
+
+  // 中文技术社区
+  if (u.includes("juejin.cn")) {
+    return { type: "juejin", icon: "🔶", label: "掘金文章", tip: "AI 将提取文章正文，根据内容制定学习计划", canFetch: true };
+  }
+  if (u.includes("zhihu.com")) {
+    return { type: "zhihu", icon: "🔵", label: "知乎文章", tip: "AI 将提取正文内容，基于文章主题规划学习路径", canFetch: true };
+  }
+  if (u.match(/\bmedium\.com\b/) || u.match(/\w+\.medium\.com/)) {
+    return { type: "medium", icon: "🟢", label: "Medium 文章", tip: "AI 将提取文章正文，根据内容规划学习计划", canFetch: true };
+  }
+
+  // 文档协作平台
+  if (u.includes("notion.so") || u.includes("notion.site")) {
+    return { type: "notion", icon: "⬜", label: "Notion 页面", tip: "Notion 为 JS 渲染页面，将读取可见标题和描述；私有内容请补充说明", canFetch: false };
+  }
+  if (u.includes("yuque.com")) {
+    return { type: "yuque", icon: "📝", label: "语雀文档", tip: "公开文档自动读取；私有文档可在设置中配置语雀 API Token", canFetch: true };
+  }
+  if (u.includes("feishu.cn") || u.includes("larkoffice.com")) {
+    return { type: "feishu", icon: "📋", label: "飞书文档", tip: "公开文档自动读取；私有文档可在设置中配置飞书 User Token", canFetch: true };
+  }
+
+  // 技术文档
   if (u.includes("docs.") || u.includes("/docs/") || u.includes("developer.mozilla") || u.includes("readthedocs")) {
-    return { type: "docs", icon: "📖", label: "技术文档", tip: "AI 将抓取文档内容，规划对应技术的学习路径" };
+    return { type: "docs", icon: "📖", label: "技术文档", tip: "AI 将抓取文档内容，规划对应技术的学习路径", canFetch: true };
   }
-  return { type: "article", icon: "🌐", label: "网页/文章", tip: "AI 将读取页面内容，根据文章主题规划学习计划" };
+
+  return { type: "article", icon: "🌐", label: "网页/文章", tip: "AI 将读取页面内容，根据文章主题规划学习计划", canFetch: true };
 }
 
 interface Props {
@@ -130,8 +187,8 @@ export function NewTaskInput({ onClose, onSubmit }: Props) {
                 }}>
                   {urlHint.label}
                 </span>
-                <span style={{ fontSize: 10, color: T.green, fontWeight: 600 }}>
-                  ✓ 将自动读取内容
+                <span style={{ fontSize: 10, color: urlHint.canFetch ? T.green : T.orange, fontWeight: 600 }}>
+                  {urlHint.canFetch ? "✓ 将自动读取内容" : "⚠ 建议补充描述"}
                 </span>
               </div>
               <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.45 }}>
@@ -169,7 +226,7 @@ export function NewTaskInput({ onClose, onSubmit }: Props) {
               transition: "opacity 0.15s",
             }}
           >
-            {urlHint ? `读取 ${urlHint.label} 并分析 →` : "开始分析 →"}
+          {urlHint ? `读取 ${urlHint.label} 并分析 →` : "开始分析 →"}
           </button>
           <button
             onClick={onClose}
