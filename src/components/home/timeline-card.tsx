@@ -15,6 +15,7 @@
  * 颜色来自大任务的 topicColor（按 topic 派发）
  */
 
+import { useState, useEffect, useRef } from "react";
 import type { SubtaskWithTask } from "@/lib/api/tasks";
 export { getSubtaskDateRange, getSubtaskActualDates } from "./subtask-row";
 
@@ -85,13 +86,26 @@ interface CardProps {
   onSelect: () => void;
   onDeleteTask: (taskId: string, e: React.MouseEvent) => void;
   onToggle: (e: React.MouseEvent) => void;
+  /** 跳过：将单个子任务标记为已完成/略过（无需真正执行）。可选——home-page 传入后显示跳过按钮 */
+  onSkip?: (e: React.MouseEvent) => void;
 }
 
 export function TimelineCard({
   row, isSelected, isHighlighted,
-  onOpen, onSelect, onDeleteTask, onToggle,
+  onOpen, onSelect, onDeleteTask, onToggle, onSkip,
 }: CardProps) {
   const taskColor = getTaskColor(row.taskId, row.topic);
+  const [hovered, setHovered] = useState(false);
+  const [animKey, setAnimKey] = useState(0);
+  const prevCompleted = useRef(row.completed);
+
+  useEffect(() => {
+    // 只在 false → true 时触发弹跳动画
+    if (!prevCompleted.current && row.completed) {
+      setAnimKey(k => k + 1);
+    }
+    prevCompleted.current = row.completed;
+  }, [row.completed]);
 
   // 直接读 DB 字段；旧数据没有时用 urgency 反推降级
   const bloomRaw = row.bloomLevel
@@ -113,6 +127,8 @@ export function TimelineCard({
   return (
     <div
       onClick={() => { onOpen(); onSelect(); }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         background: isHighlighted ? T.highlight : row.completed ? "#FAFAF9" : T.surface,
         border: `1px solid ${isHighlighted ? "#F59E0B" : isSelected ? taskColor : T.line}`,
@@ -140,8 +156,10 @@ export function TimelineCard({
 
           {/* 完成圆圈 */}
           <button
+            key={`circle-${animKey}`}
             onClick={(e) => { e.stopPropagation(); onToggle(e); }}
             title={row.completed ? "取消完成" : "标记已完成"}
+            className={row.completed && animKey > 0 ? "check-bounce" : ""}
             style={{
               width: 19, height: 19, borderRadius: "50%", flexShrink: 0, marginTop: 2,
               border: `2px solid ${row.completed ? taskColor : T.line}`,
@@ -185,11 +203,23 @@ export function TimelineCard({
                 background: `${bloomColor}15`,
                 border: `1px solid ${bloomColor}30`,
                 borderRadius: 5, padding: "1px 7px",
+                opacity: hovered ? 1 : 0,
+                maxWidth: hovered ? 120 : 0,
+                overflow: "hidden",
+                transition: "opacity 0.2s, max-width 0.2s",
+                whiteSpace: "nowrap",
               }}>
                 L{bloomRaw} · {bloomLabel}
               </span>
               {dateRange && (
-                <span style={{ fontSize: 10, color: T.muted, fontFamily: "var(--font-geist-mono), monospace" }}>
+                <span style={{
+                  fontSize: 10, color: T.muted, fontFamily: "var(--font-geist-mono), monospace",
+                  opacity: hovered ? 1 : 0,
+                  maxWidth: hovered ? 80 : 0,
+                  overflow: "hidden",
+                  transition: "opacity 0.2s, max-width 0.2s",
+                  whiteSpace: "nowrap",
+                }}>
                   {dateRange}
                 </span>
               )}
@@ -204,17 +234,35 @@ export function TimelineCard({
               </div>
               <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>{row.durationDays}天</div>
             </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDeleteTask(row.taskId, e); }}
-              title="删除大任务"
-              style={{
-                width: 22, height: 22, borderRadius: 5, border: "none",
-                background: "transparent", color: T.muted, fontSize: 15,
-                cursor: "pointer", opacity: 0.35,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "opacity 0.15s",
-              }}
-            >×</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+              {/* 跳过：仅未完成时显示，标记单个子任务为已完成/略过 */}
+              {!row.completed && onSkip && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onSkip!(e); }}
+                  title="跳过此任务（标记为已完成，无需执行）"
+                  style={{
+                    width: 22, height: 22, borderRadius: 5, border: "none",
+                    background: "transparent", color: T.muted, fontSize: 14,
+                    cursor: "pointer", opacity: hovered ? 0.75 : 0.35,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    transition: "opacity 0.15s",
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = taskColor; (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = T.muted; (e.currentTarget as HTMLButtonElement).style.opacity = hovered ? "0.75" : "0.35"; }}
+                >⤼</button>
+              )}
+              <button
+                onClick={(e) => { e.stopPropagation(); onDeleteTask(row.taskId, e); }}
+                title="删除整个大任务（含全部子任务）"
+                style={{
+                  width: 22, height: 22, borderRadius: 5, border: "none",
+                  background: "transparent", color: T.muted, fontSize: 15,
+                  cursor: "pointer", opacity: 0.35,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  transition: "opacity 0.15s",
+                }}
+              >×</button>
+            </div>
           </div>
         </div>
       </div>
