@@ -8,6 +8,19 @@ import type { TaskWithSubtasks } from "@/lib/api/tasks";
 import type { TrustableResource } from "@/lib/tavily";
 import { memory } from "@/lib/eazo-shim";
 
+// ── 响应式：窄屏（<=640px）判定 ─────────────────────────────────────
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return isMobile;
+}
+
 const T = {
   surface: "#FFFFFF", soft: "#F1F2EE", line: "#E7E7E2",
   ink: "#111111", muted: "#777B75", accent: "#3B7AFF",
@@ -280,11 +293,102 @@ export interface RightPanelProps {
 export function RightPanel({ entries, focusedId, setFocusedId, regenAnalysis, removeEntry, onToggleSubtask, onJumpToSubtask }: RightPanelProps) {
   const focused = entries.find((e) => e.taskId === focusedId) ?? entries[0] ?? null;
   const [collapsed, setCollapsed] = useState(false);
+  const isMobile = useIsMobile();
+  // 移动端底部抽屉展开态（默认收起）
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // 有正在运行的 entry 时自动展开
   const hasActive = entries.some(e => e.stream.phase !== "idle" && e.stream.phase !== "done" && e.stream.phase !== "error");
-  useEffect(() => { if (hasActive) setCollapsed(false); }, [hasActive]);
+  useEffect(() => {
+    if (hasActive) { setCollapsed(false); if (isMobile) setSheetOpen(true); }
+  }, [hasActive, isMobile]);
 
+  // 运行中的任务数量（用于移动端底部条角标）
+  const runningCount = entries.filter(e => !["idle","done","error"].includes(e.stream.phase)).length;
+
+  // 复用的标签页 + 内容主体
+  const inner = (
+    <>
+      {entries.length > 1 && (
+        <div style={{ display: "flex", gap: 4, padding: "8px 12px", overflowX: "auto", borderBottom: `1px solid ${T.line}`, flexShrink: 0 }}>
+          {entries.map((e) => {
+            const running = !["idle","done","error"].includes(e.stream.phase);
+            return (
+              <button key={e.taskId} onClick={() => setFocusedId(e.taskId)} title={e.taskTitle} style={{ padding: "3px 9px", borderRadius: 6, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap", border: `1px solid ${e.taskId === focusedId ? T.accent : T.line}`, background: e.taskId === focusedId ? "rgba(59,122,255,0.08)" : "transparent", color: e.taskId === focusedId ? T.accent : T.muted, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis" }}>
+                {running && <span style={{ animation: "blink 1s steps(2) infinite", marginRight: 3 }}>●</span>}
+                {e.taskTitle.slice(0, 8)}{e.taskTitle.length > 8 ? "…" : ""}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+        {!focused ? <EmptyState /> : <EntryDetail entry={focused} onRegen={regenAnalysis} onRemove={removeEntry} onToggleSubtask={onToggleSubtask} onJumpToSubtask={onJumpToSubtask} />}
+      </div>
+    </>
+  );
+
+  // ── 移动端：底部抽屉 ──────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <>
+        {/* 底部触发条（始终可见） */}
+        <button
+          onClick={() => setSheetOpen(true)}
+          style={{
+            position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 140,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            height: 46, border: "none", borderTop: `1px solid ${T.line}`,
+            background: T.surface, color: T.ink, fontSize: 13, fontWeight: 600,
+            cursor: "pointer", boxShadow: "0 -2px 10px rgba(17,17,17,0.06)",
+          }}
+        >
+          <span style={{ fontSize: 15 }}>🤖</span> AI 分析面板
+          {runningCount > 0 && (
+            <span style={{ background: T.accent, color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "1px 7px", display: "inline-flex", alignItems: "center", gap: 3 }}>
+              <span style={{ animation: "blink 1s steps(2) infinite" }}>●</span>{runningCount}
+            </span>
+          )}
+          <span style={{ color: T.muted, fontSize: 12 }}>▲</span>
+        </button>
+
+        {/* 遮罩 */}
+        {sheetOpen && (
+          <div onClick={() => setSheetOpen(false)}
+            style={{ position: "fixed", inset: 0, background: "rgba(17,17,17,0.28)", zIndex: 150, backdropFilter: "blur(2px)" }} />
+        )}
+
+        {/* 抽屉本体：从底部滑出 */}
+        <div style={{
+          position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 160,
+          height: "80vh", maxHeight: "80vh",
+          display: "flex", flexDirection: "column", overflow: "hidden",
+          background: T.surface, borderTop: `1px solid ${T.line}`,
+          borderRadius: "16px 16px 0 0", boxShadow: "0 -8px 30px rgba(17,17,17,0.18)",
+          transform: sheetOpen ? "translateY(0)" : "translateY(100%)",
+          transition: "transform 0.28s cubic-bezier(0.4,0,0.2,1)",
+        }}>
+          {/* 抓手 + 标题栏 */}
+          <div style={{ flexShrink: 0, borderBottom: `1px solid ${T.line}` }}>
+            <div style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: T.line }} />
+            </div>
+            <div style={{ padding: "8px 16px 12px", display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: T.ink, fontWeight: 600, fontSize: 14, letterSpacing: "-0.02em" }}>AI 分析面板</div>
+                <div style={{ color: T.muted, fontSize: 11, marginTop: 2 }}>意图→资源→计划→核查 · 全局排期</div>
+              </div>
+              <button onClick={() => setSheetOpen(false)} title="收起"
+                style={{ width: 26, height: 26, borderRadius: 6, border: "none", background: T.soft, color: T.muted, cursor: "pointer", fontSize: 15, lineHeight: 1 }}>×</button>
+            </div>
+          </div>
+          {inner}
+        </div>
+      </>
+    );
+  }
+
+  // ── 桌面端：固定右侧栏（可折叠） ──────────────────────────────────
   return (
     <div style={{ width: collapsed ? 36 : 340, flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: T.surface, borderLeft: `1px solid ${T.line}`, transition: "width 0.25s cubic-bezier(0.4,0,0.2,1)" }}>
       {/* 面板标题栏 + 折叠按钮 */}
@@ -308,24 +412,7 @@ export function RightPanel({ entries, focusedId, setFocusedId, regenAnalysis, re
           {collapsed ? "❯" : "❮"}
         </button>
       </div>
-      {!collapsed && entries.length > 1 && (
-        <div style={{ display: "flex", gap: 4, padding: "8px 12px", overflowX: "auto", borderBottom: `1px solid ${T.line}`, flexShrink: 0 }}>
-          {entries.map((e) => {
-            const running = !["idle","done","error"].includes(e.stream.phase);
-            return (
-              <button key={e.taskId} onClick={() => setFocusedId(e.taskId)} title={e.taskTitle} style={{ padding: "3px 9px", borderRadius: 6, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap", border: `1px solid ${e.taskId === focusedId ? T.accent : T.line}`, background: e.taskId === focusedId ? "rgba(59,122,255,0.08)" : "transparent", color: e.taskId === focusedId ? T.accent : T.muted, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis" }}>
-                {running && <span style={{ animation: "blink 1s steps(2) infinite", marginRight: 3 }}>●</span>}
-                {e.taskTitle.slice(0, 8)}{e.taskTitle.length > 8 ? "…" : ""}
-              </button>
-            );
-          })}
-        </div>
-      )}
-      {!collapsed && (
-        <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
-          {!focused ? <EmptyState /> : <EntryDetail entry={focused} onRegen={regenAnalysis} onRemove={removeEntry} onToggleSubtask={onToggleSubtask} onJumpToSubtask={onJumpToSubtask} />}
-        </div>
-      )}
+      {!collapsed && inner}
     </div>
   );
 }
