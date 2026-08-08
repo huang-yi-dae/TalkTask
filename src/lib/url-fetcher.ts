@@ -10,6 +10,10 @@
  * 支持的 URL 类型（按抓取策略分类）：
  *   - GitHub 仓库      → 调用 GitHub API 读取 README + 仓库信息
  *   - GitHub 文件/Gist → 直接读取原始内容
+ *   - arXiv 论文       → abs 页摘要 + ar5iv 章节结构
+ *   - 掘金/知乎/Medium → 平台专属正文提取
+ *   - Coursera/edX     → 课程大纲 + 评分 + 技能标签
+ *   - npm/PyPI         → 包描述 + 依赖列表
  *   - 普通网页/文章    → fetch HTML → 提取 title + meta + 正文段落
  *   - 视频平台         → 提取标题 + 描述（无法抓取字幕）
  *
@@ -21,6 +25,10 @@ import { fetchPdf, isPdfUrl } from "./fetchers/pdf";
 import { fetchBilibili } from "./fetchers/bilibili";
 import { fetchWorkspaceDoc } from "./fetchers/workspace";
 import { fetchWithFallback, isEmptyShell, detectJsRenderedPlatform } from "./fetchers/fallback";
+import { fetchArxiv } from "./fetchers/arxiv";
+import { fetchArticle } from "./fetchers/article";
+import { fetchCourse } from "./fetchers/course";
+import { fetchNpm, fetchPypi } from "./fetchers/package";
 
 // ─── 类型定义 ────────────────────────────────────────────────────────────
 
@@ -33,6 +41,14 @@ export type UrlType =
   | "yuque"
   | "feishu"
   | "notion"
+  | "arxiv"
+  | "juejin"
+  | "zhihu"
+  | "medium"
+  | "coursera"
+  | "edx"
+  | "npm"
+  | "pypi"
   | "article"
   | "docs"
   | "unknown";
@@ -86,6 +102,22 @@ export function detectUrlType(url: string): UrlType {
   if (u.includes("yuque.com")) return "yuque";
   if (u.includes("feishu.cn") || u.includes("larkoffice.com") || u.includes("larksuite.com")) return "feishu";
   if (u.includes("notion.so") || u.includes("notion.site")) return "notion";
+
+  // arXiv 论文
+  if (u.includes("arxiv.org") || u.includes("ar5iv.org")) return "arxiv";
+
+  // 课程平台
+  if (u.includes("coursera.org")) return "coursera";
+  if (u.includes("edx.org")) return "edx";
+
+  // 包管理
+  if (u.includes("npmjs.com/package/")) return "npm";
+  if (u.includes("pypi.org/project/")) return "pypi";
+
+  // 中文技术社区 & Medium
+  if (u.includes("juejin.cn")) return "juejin";
+  if (u.includes("zhihu.com")) return "zhihu";
+  if (u.match(/\bmedium\.com\b/) || u.match(/\w+\.medium\.com/)) return "medium";
 
   if (
     u.includes("docs.") || u.includes("/docs/") || u.includes("documentation") ||
@@ -303,6 +335,31 @@ export async function fetchUrlContent(url: string): Promise<FetchedContent | nul
         return await fetchWorkspaceDoc(url, "feishu");
       case "notion":
         return await fetchWithFallback(url, "notion");
+
+      // ── 学术论文 ────────────────────────────────────────────────────────
+      case "arxiv":
+        return await fetchArxiv(url);
+
+      // ── 课程平台 ────────────────────────────────────────────────────────
+      case "coursera":
+        return await fetchCourse(url, "coursera");
+      case "edx":
+        return await fetchCourse(url, "edx");
+
+      // ── 包管理平台 ──────────────────────────────────────────────────────
+      case "npm":
+        return await fetchNpm(url);
+      case "pypi":
+        return await fetchPypi(url);
+
+      // ── 中文社区 & Medium ────────────────────────────────────────────────
+      case "juejin":
+        return await fetchArticle(url, "juejin");
+      case "zhihu":
+        return await fetchArticle(url, "zhihu");
+      case "medium":
+        return await fetchArticle(url, "medium");
+
       case "docs":
       case "article":
       default:
@@ -326,6 +383,14 @@ export function formatContentForPrompt(content: FetchedContent): string {
     yuque:       "语雀文档",
     feishu:      "飞书文档",
     notion:      "Notion 页面",
+    arxiv:       "arXiv 论文",
+    juejin:      "掘金文章",
+    zhihu:       "知乎文章",
+    medium:      "Medium 文章",
+    coursera:    "Coursera 课程",
+    edx:         "edX 课程",
+    npm:         "npm 包",
+    pypi:        "PyPI 包",
     article:     "网页文章",
     docs:        "技术文档",
     unknown:     "网页",
