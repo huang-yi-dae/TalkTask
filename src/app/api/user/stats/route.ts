@@ -87,15 +87,26 @@ export async function GET(request: NextRequest) {
       .where(and(eq(tasks.userId, user.id), eq(tasks.status, "active")));
     const activeTaskCount = activeTaskRows[0]?.count ?? 0;
 
+    // 目标总数（用户创建过的全部任务，含已完成）
+    const totalGoalRows = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(tasks)
+      .where(eq(tasks.userId, user.id));
+    const totalGoals = totalGoalRows[0]?.count ?? 0;
+
     return NextResponse.json({
       streak,
       todayCount,
       weekCount,
       totalCompleted: rows.length,
       activeTaskCount,
+      // 累计学习天数：有完成记录的去重日期数
+      learnDays: completedDates.size,
+      // 目标总数（累计接触过的学习目标）
+      totalGoals,
     });
   } catch (err) {
     console.error("[stats]", err);
-    return NextResponse.json({ streak: 0, todayCount: 0, weekCount: 0, totalCompleted: 0, activeTaskCount: 0 });
+    return NextResponse.json({ streak: 0, todayCount: 0, weekCount: 0, totalCompleted: 0, activeTaskCount: 0, learnDays: 0, totalGoals: 0 });
   }
 }
