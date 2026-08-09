@@ -15,7 +15,7 @@ import { getSubtaskActualDates } from "./subtask-row";
 import { TimelineCard, TimelineSectionHeader } from "./timeline-card";
 import { SubtaskDetailModal } from "./subtask-detail-modal";
 import { CongratulationsModal, type CongratsData } from "./congrats-modal";
-import { AchievementPanel } from "./achievement-panel";
+import { AchievementPanel, LevelBadge } from "./achievement-panel";
 import { request } from "@/lib/api/request";
 import { encourageMessage, crossedMilestone, type Level } from "@/lib/growth";
 import { MilestoneUnlockModal } from "./milestone-unlock-modal";
@@ -219,6 +219,7 @@ export function HomePage() {
   useEffect(() => {
     setTodayStr(new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" }));
   }, []);
+  const totalPending = subtaskRows.filter(r => !r.completed).length;
 
   // ── 全局键盘快捷键 ──────────────────────────────────────────────
   useEffect(() => {
@@ -285,9 +286,13 @@ export function HomePage() {
   return (
     <div style={{ background: T.bg, height: "100%", display: "flex", flexDirection: "column", fontFamily: "var(--font-geist), Geist, system-ui, sans-serif" }}>
       <header style={{ background: T.surface, borderBottom: `1px solid ${T.line}`, padding: "0 24px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-        <div>
-          <div style={{ color: T.ink, fontWeight: 700, fontSize: 17, letterSpacing: "-0.04em" }}>拾级</div>
-          <div style={{ color: T.muted, fontSize: 11, marginTop: 1 }}>把目标拆成每天能完成的小步骤</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <div>
+            <div style={{ color: T.ink, fontWeight: 700, fontSize: 17, letterSpacing: "-0.04em" }}>拾级</div>
+            <div style={{ color: T.muted, fontSize: 11, marginTop: 1 }}>把目标拆成每天能完成的小步骤</div>
+          </div>
+          {/* 等级徽章：紧跟副标题右侧，靠左排布 */}
+          {user && subtaskRows.length > 0 && <LevelBadge refreshTick={streakTick} />}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {!authLoading && !user && <button onClick={() => auth.login().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: `1px solid ${T.line}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}>登录</button>}
@@ -307,8 +312,8 @@ export function HomePage() {
             <span style={{ color: T.muted, fontSize: 12, fontFamily: "var(--font-geist-mono), monospace" }}>共 {filteredRows.length} 项</span>
           </div>
 
-          {/* 方向A：累计成就面板（有任务时展示） */}
-          {user && !fetching && subtaskRows.length > 0 && <AchievementPanel refreshTick={streakTick} />}
+          {/* 学习日历面板：标题 + 等级 + 数据全部收进同一个框 */}
+          {user && !fetching && subtaskRows.length > 0 && <AchievementPanel refreshTick={streakTick} pending={totalPending} title="学习日历" />}
 
           <div className="canvas-scroll" style={{ flex: 1, overflowY: "auto" }}>
             {authLoading || fetching ? (
