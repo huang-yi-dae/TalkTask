@@ -474,8 +474,26 @@ function EntryDetail({ entry, onRegen, onRemove, onToggleSubtask, onJumpToSubtas
 
       {isDone && task && (
         <>
-          <div style={{ height: 3, background: T.line, borderRadius: 9999, overflow: "hidden" }}>
-            <div style={{ width: `${pct * 100}%`, height: "100%", background: pct === 1 ? T.green : T.accent, borderRadius: 9999, transition: "width 0.5s" }} />
+          {/* 方向C：单个目标进度条 —— 部分完成也有可见推进感 */}
+          <div style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 12, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: T.ink }}>
+                {(() => {
+                  if (pct === 1) return "🎉 全部完成！";
+                  if (completedCount === 0) return "开始你的第一步";
+                  if (pct >= 0.75) return "🔥 就快完成了";
+                  if (pct >= 0.5) return "💪 已过半，继续保持";
+                  return "👍 已经起步，稳步推进";
+                })()}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: pct === 1 ? T.green : T.accent, fontFamily: "var(--font-geist-mono), monospace" }}>
+                {completedCount}/{totalCount}
+                <span style={{ fontSize: 10, fontWeight: 500, color: T.muted, marginLeft: 4 }}>{Math.round(pct * 100)}%</span>
+              </span>
+            </div>
+            <div style={{ height: 8, background: T.line, borderRadius: 9999, overflow: "hidden" }}>
+              <div style={{ width: `${pct * 100}%`, height: "100%", background: pct === 1 ? T.green : T.accent, borderRadius: 9999, transition: "width 0.5s ease" }} />
+            </div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}` }}>
