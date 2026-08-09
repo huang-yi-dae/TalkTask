@@ -7,6 +7,7 @@ import { createTask, getTask } from "@/lib/api/tasks";
 import type { TaskWithSubtasks } from "@/lib/api/tasks";
 import type { TrustableResource } from "@/lib/tavily";
 import { memory } from "@/lib/eazo-shim";
+import { openExternalUrl } from "@/lib/safe-url";
 
 // ── 响应式：窄屏（<=640px）判定 ─────────────────────────────────────
 function useIsMobile() {
@@ -279,7 +280,7 @@ function ResourceCard({ res }: { res: Resource }) {
   const color = typeColors[res.type] ?? T.muted;
   const clickable = !!(res.url || res.searchQuery);
   return (
-    <div onClick={clickable ? () => { if (res.url) window.open(res.url, "_blank", "noopener"); else if (res.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(res.searchQuery)}`, "_blank", "noopener"); } : undefined}
+    <div onClick={clickable ? () => { if (res.url) openExternalUrl(res.url); else if (res.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(res.searchQuery)}`, "_blank", "noopener"); } : undefined}
       style={{ border: `1px solid ${T.line}`, borderRadius: 8, padding: "8px 10px", cursor: clickable ? "pointer" : "default", background: T.surface }}>
       <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
         <span style={{ fontSize: 9, fontWeight: 700, color, background: `${color}18`, border: `1px solid ${color}30`, borderRadius: 4, padding: "1px 5px" }}>{typeLabels[res.type] ?? res.type}</span>
@@ -535,7 +536,7 @@ function EntryDetail({ entry, onRegen, onRemove, onToggleSubtask, onJumpToSubtas
                             const tagBorder = tl === "verified" ? "rgba(47,93,80,0.2)"
                               : tl === "search_only" ? "rgba(224,123,42,0.2)" : "rgba(59,122,255,0.2)";
                             return (
-                            <span key={ri} onClick={(e) => { e.stopPropagation(); if (r.url) window.open(r.url, "_blank", "noopener"); else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener"); }}
+                            <span key={ri} onClick={(e) => { e.stopPropagation(); if (r.url) openExternalUrl(r.url); else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener"); }}
                               style={{ fontSize: 9, padding: "1px 6px", borderRadius: 4, background: tagBg, color: tagColor, border: `1px solid ${tagBorder}`, cursor: r.url || r.searchQuery ? "pointer" : "default", whiteSpace: "nowrap", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis" }}
                               title={r.url || r.searchQuery || r.title}>
                               {tl === "verified" ? "✓" : tl === "search_only" ? "🔎" : (r.type === "link" ? "🔗" : r.type === "search" ? "🔎" : r.type === "person" ? "👤" : "📚")} {r.title.slice(0, 12)}{r.title.length > 12 ? "…" : ""}

@@ -12,6 +12,7 @@
 import type { Subtask } from "@/lib/db/schema";
 import type { TaskWithSubtasks } from "@/lib/api/tasks";
 import { GanttChart } from "@/components/task/gantt-chart";
+import { openExternalUrl } from "@/lib/safe-url";
 import {
   URL_STATUS_CONFIG,
   FRESHNESS_CONFIG,
@@ -362,7 +363,7 @@ function ResourcePanel({ subtasks }: { subtasks: Subtask[] }) {
               key={i}
               onClick={(clickable && !isDead) ? () => {
                 const target = r.resolved_url ?? r.url;
-                if (target) window.open(target, "_blank", "noopener");
+                if (target) openExternalUrl(target);
                 else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener");
               } : undefined}
               style={{

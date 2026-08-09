@@ -7,41 +7,39 @@
  *   当用户输入包含 URL 时，在 AI 分析之前先抓取真实内容，
  *   再将内容注入 Prompt，让 AI 基于实际页面而非猜测来规划学习路径。
  *
- * 支持的 URL 类型（按抓取策略分类）：
- *   - GitHub 仓库      → 调用 GitHub API 读取 README + 仓库信息
- *   - GitHub 文件/Gist → 直接读取原始内容
- *   - arXiv 论文       → abs 页摘要 + ar5iv 章节结构
- *   - 掘金/知乎/Medium → 平台专属正文提取
- *   - Coursera/edX     → 课程大纲 + 评分 + 技能标签
- *   - npm/PyPI         → 包描述 + 依赖列表
- *   - 普通网页/文章    → fetch HTML → 提取 title + meta + 正文段落
- *   - 视频平台         → 提取标题 + 描述（无法抓取字幕）
+ * 支持的 URL 类型：
+ *   - GitHub 仓库/文件  → GitHub API + raw 内容
+ *   - arXiv 论文        → abs 页摘要 + ar5iv 章节
+ *   - 掘金/知乎/Medium  → 平台专属正文提取
+ *   - Coursera/edX      → 课程大纲 + 评价 + 技能
+ *   - npm/PyPI          → 包描述 + 依赖列表
+ *   - PDF 直链          → 元数据 + 前几页文字（无第三方依赖）
+ *   - Bilibili          → 公开 API 拿标题+简介+UP主+标签
+ *   - 语雀/飞书         → API Token 读取私有文档（降级为友好提示）
+ *   - 视频平台          → 标题+描述（无字幕）
+ *   - 普通网页/文档     → title + meta + 正文
+ *   - JS 渲染页面       → 识别平台 + 友好引导提示（不再静默返回空）
  *
  * 降级策略：
  *   任何抓取失败 → 返回 null，主流程继续但不注入内容（不阻断任务创建）
+ *   JS 渲染 / 私有文档 → 返回包含引导提示的 FetchedContent（不返回 null）
  */
 
+import { fetchArxiv } from "./fetchers/arxiv";
+import { isSafePublicUrl, safeFetch } from "./ssrf-guard";
+import { fetchArticle } from "./fetchers/article";
+import { fetchCourse } from "./fetchers/course";
+import { fetchNpm, fetchPypi } from "./fetchers/package";
 import { fetchPdf, isPdfUrl } from "./fetchers/pdf";
 import { fetchBilibili } from "./fetchers/bilibili";
 import { fetchWorkspaceDoc } from "./fetchers/workspace";
 import { fetchWithFallback, isEmptyShell, detectJsRenderedPlatform } from "./fetchers/fallback";
-import { fetchArxiv } from "./fetchers/arxiv";
-import { fetchArticle } from "./fetchers/article";
-import { fetchCourse } from "./fetchers/course";
-import { fetchNpm, fetchPypi } from "./fetchers/package";
-import { isSafePublicUrl } from "./ssrf-guard";
 
 // ─── 类型定义 ────────────────────────────────────────────────────────────
 
 export type UrlType =
   | "github_repo"
   | "github_file"
-  | "youtube"
-  | "bilibili"
-  | "pdf"
-  | "yuque"
-  | "feishu"
-  | "notion"
   | "arxiv"
   | "juejin"
   | "zhihu"
@@ -50,6 +48,12 @@ export type UrlType =
   | "edx"
   | "npm"
   | "pypi"
+  | "pdf"
+  | "bilibili"
+  | "youtube"
+  | "yuque"
+  | "feishu"
+  | "notion"
   | "article"
   | "docs"
   | "unknown";
@@ -86,26 +90,24 @@ export function isUrlDominant(input: string): boolean {
 /** 识别 URL 类型 */
 export function detectUrlType(url: string): UrlType {
   const u = url.toLowerCase();
-  if (u.includes("github.com")) {
-    // github.com/owner/repo/blob/... 或 raw.githubusercontent.com → file
+
+  // GitHub
+  if (u.includes("github.com") || u.includes("raw.githubusercontent.com")) {
     if (u.includes("/blob/") || u.includes("raw.githubusercontent.com") || u.includes("/gist")) {
       return "github_file";
     }
     return "github_repo";
   }
-  if (u.includes("youtube.com") || u.includes("youtu.be")) return "youtube";
-  if (u.includes("bilibili.com") || u.includes("b23.tv")) return "bilibili";
+
+  // arXiv
+  if (u.includes("arxiv.org") || u.includes("ar5iv.org")) return "arxiv";
 
   // PDF 直链（扩展名检测优先）
   if (isPdfUrl(url)) return "pdf";
 
-  // 文档协作平台
-  if (u.includes("yuque.com")) return "yuque";
-  if (u.includes("feishu.cn") || u.includes("larkoffice.com") || u.includes("larksuite.com")) return "feishu";
-  if (u.includes("notion.so") || u.includes("notion.site")) return "notion";
-
-  // arXiv 论文
-  if (u.includes("arxiv.org") || u.includes("ar5iv.org")) return "arxiv";
+  // 视频平台
+  if (u.includes("youtube.com") || u.includes("youtu.be")) return "youtube";
+  if (u.includes("bilibili.com") || u.includes("b23.tv")) return "bilibili";
 
   // 课程平台
   if (u.includes("coursera.org")) return "coursera";
@@ -120,10 +122,17 @@ export function detectUrlType(url: string): UrlType {
   if (u.includes("zhihu.com")) return "zhihu";
   if (u.match(/\bmedium\.com\b/) || u.match(/\w+\.medium\.com/)) return "medium";
 
+  // 文档协作平台
+  if (u.includes("yuque.com")) return "yuque";
+  if (u.includes("feishu.cn") || u.includes("larkoffice.com") || u.includes("larksuite.com")) return "feishu";
+  if (u.includes("notion.so") || u.includes("notion.site")) return "notion";
+
+  // 技术文档
   if (
     u.includes("docs.") || u.includes("/docs/") || u.includes("documentation") ||
     u.includes("developer.mozilla") || u.includes("readthedocs") || u.includes("docs.python")
   ) return "docs";
+
   return "article";
 }
 
@@ -239,7 +248,8 @@ function extractTextFromHtml(html: string): { title: string; body: string } {
 
 async function fetchWebPage(url: string, urlType: UrlType): Promise<FetchedContent | null> {
   try {
-    const res = await fetch(url, {
+    // safeFetch：手动跟随重定向并逐跳校验，防止 302 跳转到内网绕过 SSRF 防护
+    const res = await safeFetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; AutoTask/1.0; +https://talk-task.vercel.app)",
         Accept: "text/html,application/xhtml+xml",
@@ -318,27 +328,17 @@ export async function fetchUrlContent(url: string): Promise<FetchedContent | nul
 
   try {
     switch (urlType) {
+      // ── GitHub ──────────────────────────────────────────────────────────
       case "github_repo":
         return await fetchGithubRepo(url);
       case "github_file": {
-        // 把 /blob/ 替换成 raw 路径
         const rawUrl = url
           .replace("github.com", "raw.githubusercontent.com")
           .replace("/blob/", "/");
+        // 重写后的 URL 再次过 SSRF 校验（防御纵深）
+        if (!isSafePublicUrl(rawUrl)) return null;
         return await fetchWebPage(rawUrl, "github_file");
       }
-      case "youtube":
-        return buildVideoContent(url, "youtube");
-      case "bilibili":
-        return await fetchBilibili(url);
-      case "pdf":
-        return await fetchPdf(url);
-      case "yuque":
-        return await fetchWorkspaceDoc(url, "yuque");
-      case "feishu":
-        return await fetchWorkspaceDoc(url, "feishu");
-      case "notion":
-        return await fetchWithFallback(url, "notion");
 
       // ── 学术论文 ────────────────────────────────────────────────────────
       case "arxiv":
@@ -364,6 +364,25 @@ export async function fetchUrlContent(url: string): Promise<FetchedContent | nul
       case "medium":
         return await fetchArticle(url, "medium");
 
+      // ── 视频平台 ────────────────────────────────────────────────────────
+      case "youtube":
+        return buildVideoContent(url, "youtube");
+      case "bilibili":
+        return await fetchBilibili(url);
+
+      // ── PDF 直链 ─────────────────────────────────────────────────────────
+      case "pdf":
+        return await fetchPdf(url);
+
+      // ── 文档协作平台 ──────────────────────────────────────────────────────
+      case "yuque":
+        return await fetchWorkspaceDoc(url, "yuque");
+      case "feishu":
+        return await fetchWorkspaceDoc(url, "feishu");
+      case "notion":
+        return await fetchWithFallback(url, "notion");
+
+      // ── 通用网页 ────────────────────────────────────────────────────────
       case "docs":
       case "article":
       default:
@@ -381,12 +400,6 @@ export function formatContentForPrompt(content: FetchedContent): string {
   const typeLabel: Record<UrlType, string> = {
     github_repo: "GitHub 仓库",
     github_file: "GitHub 文件",
-    youtube:     "YouTube 视频",
-    bilibili:    "Bilibili 视频",
-    pdf:         "PDF 文档",
-    yuque:       "语雀文档",
-    feishu:      "飞书文档",
-    notion:      "Notion 页面",
     arxiv:       "arXiv 论文",
     juejin:      "掘金文章",
     zhihu:       "知乎文章",
@@ -395,6 +408,12 @@ export function formatContentForPrompt(content: FetchedContent): string {
     edx:         "edX 课程",
     npm:         "npm 包",
     pypi:        "PyPI 包",
+    pdf:         "PDF 文档",
+    bilibili:    "Bilibili 视频",
+    youtube:     "YouTube 视频",
+    yuque:       "语雀文档",
+    feishu:      "飞书文档",
+    notion:      "Notion 页面",
     article:     "网页文章",
     docs:        "技术文档",
     unknown:     "网页",

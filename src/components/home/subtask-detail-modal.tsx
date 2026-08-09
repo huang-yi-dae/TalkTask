@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { SubtaskWithTask } from "@/lib/api/tasks";
 import { getSubtaskDateRange } from "./subtask-row";
+import { openExternalUrl } from "@/lib/safe-url";
 import {
   URL_STATUS_CONFIG,
   FRESHNESS_CONFIG,
@@ -225,7 +226,7 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
                   key={i}
                   onClick={clickable && !isDead ? () => {
                     const targetUrl = r.resolved_url ?? r.url;
-                    if (targetUrl) window.open(targetUrl, "_blank", "noopener");
+                    if (targetUrl) openExternalUrl(targetUrl);
                     else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener");
                   } : undefined}
                   style={{
@@ -350,7 +351,7 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
           return (
             <button
               onClick={() => {
-                window.open(firstUrl, "_blank", "noopener");
+                openExternalUrl(firstUrl);
               }}
               style={{
                 width: "100%", background: T.accent, color: "#fff",
