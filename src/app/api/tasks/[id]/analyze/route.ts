@@ -322,8 +322,20 @@ export async function POST(
 
     return NextResponse.json({ ok: true, result });
   } catch (err) {
-    const errMsg = err instanceof Error ? err.message : "Unknown error";
-    console.error("[AutoTask] analyze pipeline error:", errMsg);
-    return NextResponse.json({ ok: false, error: errMsg }, { status: 500 });
+    const errAny = err as Record<string, unknown>;
+    const detail = {
+      message: err instanceof Error ? err.message : String(err),
+      code: errAny.code,
+      detail: errAny.detail,
+      hint: errAny.hint,
+      severity: errAny.severity,
+      routine: errAny.routine,
+      position: errAny.position,
+      schema: errAny.schema,
+      table: errAny.table,
+      column: errAny.column,
+    };
+    console.error("[AutoTask] analyze pipeline error:", JSON.stringify(detail));
+    return NextResponse.json({ ok: false, error: detail.message, pgCode: detail.code as string }, { status: 500 });
   }
 }
