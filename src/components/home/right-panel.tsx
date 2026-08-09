@@ -199,7 +199,22 @@ export function useAnalysisPanel() {
     setFocusedId(taskId);
   }, []);
 
-  return { entries, focusedId, setFocusedId, startAnalysis, regenAnalysis, removeEntry, hydrateFromDB, focusTask };
+  /** 同步右侧 AI 面板的子任务完成态 */
+  const patchSubtaskCompleted = useCallback((taskId: string, subtaskId: string, completed: boolean) => {
+    setEntries((prev) => prev.map((e) => {
+      if (e.taskId !== taskId || !e.task) return e;
+      return {
+        ...e,
+        task: {
+          ...e.task,
+          subtasks: e.task.subtasks.map((s) =>
+            s.id === subtaskId ? { ...s, completed } : s),
+        },
+      };
+    }));
+  }, []);
+
+  return { entries, focusedId, setFocusedId, startAnalysis, regenAnalysis, removeEntry, hydrateFromDB, focusTask, patchSubtaskCompleted };
 }
 
 // ─── Pipeline Steps Display ───────────────────────────────────────────
