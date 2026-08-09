@@ -33,7 +33,7 @@ const client =
   globalForDb.__autotaskSql ??
   postgres(connectionString, {
     max: 1,
-    idle_timeout: 20,
+    idle_timeout: 300,        // 覆盖 analyze 路由最长 300s 的 AI Pipeline
     connect_timeout: 15,
     prepare: false,
   });
