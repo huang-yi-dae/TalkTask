@@ -15,7 +15,6 @@ import { getSubtaskActualDates } from "./subtask-row";
 import { TimelineCard, TimelineSectionHeader } from "./timeline-card";
 import { SubtaskDetailModal } from "./subtask-detail-modal";
 import { CongratulationsModal, type CongratsData } from "./congrats-modal";
-import { StreakBar } from "./streak-bar";
 import { AchievementPanel, LevelBadge } from "./achievement-panel";
 import { MilestoneUnlockModal } from "./milestone-unlock-modal";
 import { crossedMilestone, type Level } from "@/lib/growth";
@@ -225,10 +224,10 @@ export function HomePage() {
             <span style={{ color: T.muted, fontSize: 12, fontFamily: "var(--font-geist-mono), monospace" }}>共 {filteredRows.length} 项</span>
           </div>
 
-          {/* 连续性统计条 */}
-          {user && <StreakBar refreshTick={streakTick} />}
-          {/* 成长体系 · 学习日历面板 */}
-          {user && <AchievementPanel refreshTick={streakTick} pending={pendingCount} />}
+          {/* 成长体系 · 学习日历面板（已合并原「连续性统计条」）*/}
+          {user && !fetching && subtaskRows.length > 0 && (
+            <AchievementPanel refreshTick={streakTick} pending={pendingCount} title="学习日历" />
+          )}
 
           <div style={{ flex: 1, overflowY: "auto" }}>
             {authLoading || fetching ? (
