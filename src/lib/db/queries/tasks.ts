@@ -1,4 +1,4 @@
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { tasks, subtasks } from "@/lib/db/schema";
 import type { Task, Subtask } from "@/lib/db/schema";
@@ -178,15 +178,17 @@ export async function createSubtasks(
 
 export async function toggleSubtask(
   id: string,
-  completed: boolean
+  completed: boolean,
+  taskId: string
 ): Promise<void> {
   await db.update(subtasks)
     .set({
       completed,
-      // 完成时记录时间戳（用于连续性追踪 / streak）；取消完成时清空
+      // 完成时记录时间戳（用于连续性追踪）；取消完成时清空
       completedAt: completed ? new Date() : null,
     })
-    .where(eq(subtasks.id, id));
+    // 同时约束 taskId，防止越权修改他人子任务（IDOR）
+    .where(and(eq(subtasks.id, id), eq(subtasks.taskId, taskId)));
 }
 
 /** 返回该用户所有任务的排期摘要（用于全局接续计算） */

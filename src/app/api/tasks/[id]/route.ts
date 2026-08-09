@@ -38,7 +38,12 @@ export async function PATCH(
   }
 
   const body = await request.json();
+  // 白名单校验：只接受已知合法状态，拒绝任意字符串写入
+  const ALLOWED_STATUS = ["active", "done"] as const;
   if (typeof body.status === "string") {
+    if (!ALLOWED_STATUS.includes(body.status as (typeof ALLOWED_STATUS)[number])) {
+      return NextResponse.json({ error: "invalid status" }, { status: 400 });
+    }
     await updateTaskStatus(id, body.status);
   }
   return NextResponse.json({ ok: true });

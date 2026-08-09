@@ -15,6 +15,7 @@
  */
 
 import type { TrustableResource } from "./tavily";
+import { isSafePublicUrl } from "./ssrf-guard";
 
 // ─── 类型扩展 ─────────────────────────────────────────────────────────────
 
@@ -204,10 +205,15 @@ async function validateUrl(url: string): Promise<ResourceValidation> {
   const authority = getDomainAuthority(url);
   const start = Date.now();
 
+  // SSRF 防护：拒绝私网/环回/元数据地址，不对其发起请求
+  if (!isSafePublicUrl(url)) {
+    return { ...authority, url_status: "dead", freshness: "unknown", checked_at: 0 };
+  }
+
   try {
     const res = await fetch(url, {
       method: "HEAD",
-      redirect: "follow",
+      redirect: "manual",
       headers: { "User-Agent": "AutoTask/1.0 (resource-validator)" },
       signal: AbortSignal.timeout(2500),
     });

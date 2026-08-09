@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 import { appAi } from "@/lib/eazo-ai-billing";
 import { resolveResources, type SearchIntent, type TrustableResource } from "@/lib/tavily";
 import { validateResources } from "@/lib/resource-validator";
@@ -72,6 +73,15 @@ export async function POST(
 ) {
   const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
+
+  // 限流：昂贵 AI 端点，每用户每分钟最多 10 次，防刷量放大成本
+  const rl = rateLimit(`analyze:${auth.user.id}`, 10, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "请求过于频繁，请稍后再试" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
+    );
+  }
 
   const { id } = await params;
   const task = await getTaskById(id);
