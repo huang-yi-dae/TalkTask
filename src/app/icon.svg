@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img">
+  <title>拾级 Gradus — 登顶小旗</title>
+  <desc>三段台阶拾级而上，顶端一面迎风小旗，寓意循序渐进、完成打卡</desc>
+  <rect width="512" height="512" rx="112" fill="#FAECE7"/>
+  <rect x="116" y="340" width="88" height="56" rx="14" fill="#993C1D"/>
+  <rect x="212" y="276" width="88" height="120" rx="14" fill="#993C1D"/>
+  <rect x="308" y="212" width="88" height="184" rx="14" fill="#993C1D"/>
+  <path d="M352 212 L352 108" fill="none" stroke="#712B13" stroke-width="14" stroke-linecap="round"/>
+  <path d="M352 116 C390 100 420 124 448 108 L448 168 C420 184 390 160 352 176 Z" fill="#D85A30"/>
+</svg>

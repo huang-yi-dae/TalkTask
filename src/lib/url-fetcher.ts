@@ -240,7 +240,7 @@ async function fetchWebPage(url: string, urlType: UrlType): Promise<FetchedConte
   try {
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; AutoTask/1.0; +https://autotask.ai)",
+        "User-Agent": "Mozilla/5.0 (compatible; AutoTask/1.0; +https://talk-task.vercel.app)",
         Accept: "text/html,application/xhtml+xml",
       },
       signal: AbortSignal.timeout(8000),

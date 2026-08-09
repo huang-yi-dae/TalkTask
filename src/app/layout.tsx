@@ -25,7 +25,7 @@ const SITE_URL = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
   : undefined;
 
-const SITE_TITLE = process.env.NEXT_PUBLIC_APP_TITLE?.trim() || "AutoTask";
+const SITE_TITLE = process.env.NEXT_PUBLIC_APP_TITLE?.trim() || "拾级";
 const SITE_DESCRIPTION =
   process.env.NEXT_PUBLIC_APP_DESCRIPTION?.trim() ||
   "Type a goal, let AI plan the rest.";
