@@ -7,12 +7,10 @@
  *   ┌─────────────────────────────────────┐
  *   │▓▓▓▓▓▓░░░░░░░░  ← 顶部时长色条       │
  *   │ ○  子任务标题                  2.5h │
- *   │    大任务名 · Bloom L3·应用   2天   │
- *   │    [主题] [⚡极紧急]               │
+ *   │    大任务名 · [hover才展开徽章]      │
  *   └─────────────────────────────────────┘
  *
- * 顶部色条宽度 = deepWorkHours / 4.5（最大1 BRAC块组=4.5h）→ 百分比
- * 颜色来自大任务的 topicColor（按 topic 派发）
+ * 徽章行（Bloom、日期）默认收起，hover 才渐显
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -87,12 +85,10 @@ interface CardProps {
   onOpen: () => void;
   onSelect: () => void;
   onToggle: (e: React.MouseEvent) => void;
-  /** 跳过：将单个子任务标记为已完成/略过（无需真正执行）。可选——home-page 传入后显示跳过按钮 */
-  onSkip?: (e: React.MouseEvent) => void;
-  /** @deprecated 删除大任务功能已移除，保留仅向后兼容；PR-E 后将彻底删除 */
-  onDeleteTask?: (taskId: string, e: React.MouseEvent) => void;
+  /** 跳过：将单个子任务标记为已完成/略过（无需真正执行） */
+  onSkip: (e: React.MouseEvent) => void;
   /** 延迟一天：弹窗确认后触发重排 */
-  onPostpone?: (e: React.MouseEvent) => void;
+  onPostpone: (e: React.MouseEvent) => void;
 }
 
 export function TimelineCard({
@@ -112,17 +108,14 @@ export function TimelineCard({
     prevCompleted.current = row.completed;
   }, [row.completed]);
 
-  // 直接读 DB 字段；旧数据没有时用 urgency 反推降级
-  const bloomRaw = row.bloomLevel
-    ? Math.max(1, Math.min(6, row.bloomLevel))
-    : (row.urgency ? Math.max(1, Math.min(5, 6 - row.urgency)) : 2);
+  // bloom_level 和 deepWorkHours 不在 DB schema 里，用可用字段估算
+  // urgency 1=极紧急(高bloom)→5=不紧急(低bloom)，倒转映射 bloom 1-5
+  const bloomRaw = row.urgency ? Math.max(1, Math.min(5, 6 - row.urgency)) : 2;
   const bloomColor = BLOOM_COLORS[bloomRaw] ?? BLOOM_COLORS[2];
   const bloomLabel = BLOOM_LABELS[bloomRaw] ?? "理解";
 
-  // 直接读 DB 字段；旧数据没有时按 durationDays 估算
-  const deepHours = row.deepWorkHours
-    ? Math.min(4.5, Math.max(1.5, row.deepWorkHours))
-    : Math.min(4.5, Math.max(1.5, row.durationDays * 1.5));
+  // 预估深度学习时长：durationDays * 1.5h/天，上限 4.5h
+  const deepHours = Math.min(4.5, Math.max(1.5, row.durationDays * 1.5));
   // 色条宽度：以 4.5h 为上限
   const barPct = Math.min(100, Math.round((deepHours / 4.5) * 100));
 
@@ -136,8 +129,13 @@ export function TimelineCard({
       onMouseLeave={() => setHovered(false)}
       style={{
         background: isHighlighted ? T.highlight : row.completed ? "#FAFAF9" : T.surface,
-        border: `1px solid ${isHighlighted ? "#F59E0B" : isActive ? taskColor : isSelected ? taskColor : T.line}`,
-        borderLeft: isActive ? `4px solid ${taskColor}` : undefined,
+        // 用非简写的分边属性，避免与 borderLeft 混用（React 会警告简写/非简写冲突）
+        borderStyle: "solid",
+        borderColor: isHighlighted ? "#F59E0B" : isActive ? taskColor : isSelected ? taskColor : T.line,
+        borderTopWidth: 1,
+        borderRightWidth: 1,
+        borderBottomWidth: 1,
+        borderLeftWidth: isActive ? 4 : 1,
         borderRadius: 12,
         overflow: "hidden",
         opacity: row.completed ? 0.62 : 1,
@@ -176,22 +174,24 @@ export function TimelineCard({
       <div style={{ padding: "10px 12px 11px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
 
-          {/* 完成圆圈 */}
+          {/* 完成圆圈：卡片唯一的完成控件（点击标记完成/取消） */}
           <button
             key={`circle-${animKey}`}
             onClick={(e) => { e.stopPropagation(); onToggle(e); }}
             title={row.completed ? "取消完成" : "标记已完成"}
             className={row.completed && animKey > 0 ? "check-bounce" : ""}
             style={{
-              width: 19, height: 19, borderRadius: "50%", flexShrink: 0, marginTop: 2,
-              border: `2px solid ${row.completed ? taskColor : T.line}`,
-              background: row.completed ? taskColor : "transparent",
+              width: 22, height: 22, borderRadius: "50%", flexShrink: 0, marginTop: 1,
+              border: `2px solid ${row.completed ? taskColor : hovered ? taskColor : T.line}`,
+              background: row.completed ? taskColor : hovered ? `${taskColor}12` : "transparent",
               cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
               transition: "all 0.18s",
             }}
           >
-            {row.completed && <span style={{ color: "#fff", fontSize: 9, lineHeight: 1, fontWeight: 700 }}>✓</span>}
+            {row.completed
+              ? <span style={{ color: "#fff", fontSize: 11, lineHeight: 1, fontWeight: 700 }}>✓</span>
+              : hovered ? <span style={{ color: taskColor, fontSize: 11, lineHeight: 1, fontWeight: 700 }}>✓</span> : null}
           </button>
 
           {/* 内容区 */}
@@ -206,7 +206,7 @@ export function TimelineCard({
               {row.title}
             </div>
 
-            {/* 元信息行：大任务名 · Bloom */}
+            {/* 元信息行：大任务名 · Bloom（hover 展开） */}
             <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
               <span style={{
                 fontSize: 10, fontWeight: 600,
@@ -219,6 +219,7 @@ export function TimelineCard({
               }}>
                 {row.taskTitle}
               </span>
+              {/* 徽章行：默认隐藏，hover 渐显 */}
               <span style={{
                 fontSize: 10, fontWeight: 600,
                 color: bloomColor,
@@ -249,62 +250,51 @@ export function TimelineCard({
           </div>
 
           {/* 右侧：时长 + 操作 */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+          {/* 右侧：时长 + 次要操作（延迟/跳过）。完成统一交给左上角圆圈，避免重复控件把卡片撑高 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: taskColor, letterSpacing: "-0.02em", lineHeight: 1 }}>
                 {deepHours}h
               </div>
-              <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>{row.durationDays}天</div>
+              <div style={{ fontSize: 9, color: T.muted, marginTop: 2 }}>{row.durationDays}天</div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-              {/* 完成对号：明显的主操作按钮，点击标记完成/取消完成 */}
-              <button
-                onClick={(e) => { e.stopPropagation(); onToggle(e); }}
-                title={row.completed ? "取消完成" : "标记为已完成"}
-                style={{
-                  width: 26, height: 26, borderRadius: "50%",
-                  border: `1.5px solid ${row.completed ? T.green : taskColor}`,
-                  background: row.completed ? T.green : `${taskColor}12`,
-                  color: row.completed ? "#fff" : taskColor,
-                  cursor: "pointer", fontSize: 14, fontWeight: 700,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  transition: "all 0.15s",
-                }}
-              >✓</button>
-              {/* 延迟一天：仅未完成时显示 */}
-              {!row.completed && onPostpone && (
+            {/* 延迟 / 跳过：默认收起，hover 卡片时才横向浮现，保持卡片清爽 */}
+            {!row.completed && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 2,
+                opacity: hovered ? 1 : 0,
+                maxWidth: hovered ? 56 : 0,
+                overflow: "hidden",
+                transition: "opacity 0.18s, max-width 0.18s",
+              }}>
                 <button
                   onClick={(e) => { e.stopPropagation(); onPostpone(e); }}
                   title="延迟一天（顺延排期）"
                   style={{
-                    width: 26, height: 26, borderRadius: "50%",
-                    border: `1.5px solid ${T.line}`,
+                    width: 24, height: 24, borderRadius: 6, border: "none",
                     background: "transparent", color: T.muted, fontSize: 13,
-                    cursor: "pointer", opacity: hovered ? 1 : 0.55,
+                    cursor: "pointer", flexShrink: 0,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     transition: "all 0.15s",
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = T.orange; (e.currentTarget as HTMLButtonElement).style.color = T.orange; (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = T.line; (e.currentTarget as HTMLButtonElement).style.color = T.muted; (e.currentTarget as HTMLButtonElement).style.opacity = hovered ? "1" : "0.55"; }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = `${T.orange}14`; (e.currentTarget as HTMLButtonElement).style.color = T.orange; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = T.muted; }}
                 >⏭</button>
-              )}
-              {/* 跳过：仅未完成时显示，标记单个子任务为已完成/略过 */}
-              {!row.completed && onSkip && (
                 <button
-                  onClick={(e) => { e.stopPropagation(); onSkip!(e); }}
+                  onClick={(e) => { e.stopPropagation(); onSkip(e); }}
                   title="跳过此任务（标记为已完成，无需执行）"
                   style={{
-                    width: 22, height: 22, borderRadius: 5, border: "none",
+                    width: 24, height: 24, borderRadius: 6, border: "none",
                     background: "transparent", color: T.muted, fontSize: 14,
-                    cursor: "pointer", opacity: hovered ? 0.75 : 0.35,
+                    cursor: "pointer", flexShrink: 0,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    transition: "opacity 0.15s",
+                    transition: "all 0.15s",
                   }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = taskColor; (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = T.muted; (e.currentTarget as HTMLButtonElement).style.opacity = hovered ? "0.75" : "0.35"; }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = `${taskColor}12`; (e.currentTarget as HTMLButtonElement).style.color = taskColor; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = T.muted; }}
                 >⤼</button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
