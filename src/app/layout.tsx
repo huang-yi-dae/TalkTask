@@ -34,10 +34,9 @@ export const metadata: Metadata = {
   ...(SITE_URL ? { metadataBase: new URL(SITE_URL) } : {}),
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
-  icons: { icon: "https://eazo.ai/favicon.ico" },
   openGraph: {
     type: "website",
-    siteName: "Eazo",
+    siteName: SITE_TITLE,
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     url: "/",
