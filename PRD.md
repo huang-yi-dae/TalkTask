@@ -1,9 +1,11 @@
-# AutoTask · 产品需求文档（PRD）
+# 拾级（Gradus）· 产品需求文档（PRD）
+
+> 原名 AutoTask，2026-08-09 起品牌名改为「拾级」。线上地址、App ID 等平台标识保持不变。
 
 **版本：** v1.0.0
 **日期：** 2026-08-05
 **App ID：** `ir03ZvSfyvtHG2OH`
-**线上地址：** https://autotask-01dfc0f9.eazo.dev
+**线上地址：** https://talk-task.vercel.app/
 **沙盒预览：** https://3000-ilwcstwrli10suhr88349.e2b.app
 **代码仓库路径：** `/home/user/autotask`
 
@@ -13,7 +15,7 @@
 
 ### 1.1 产品愿景
 
-AutoTask 是一款面向**自主学习者**的 AI 驱动任务规划与排期系统。用户只需输入一个模糊的学习目标（如"学 Python"、"备考高考数学"），AI 会自动完成：
+拾级是一款面向**自主学习者**的 AI 驱动任务规划与排期系统。用户只需输入一个模糊的学习目标（如"学 Python"、"备考高考数学"），AI 会自动完成：
 
 - 解析学习意图，生成正式任务名称
 - 搜索并推荐真实学习资源（课程、文章、博主、搜索词）
@@ -27,7 +29,7 @@ AutoTask 是一款面向**自主学习者**的 AI 驱动任务规划与排期系
 
 ### 1.3 区别于普通待办工具
 
-| 普通待办 | AutoTask |
+| 普通待办 | 拾级 |
 |---|---|
 | 用户手动创建每一条任务 | 用户只输入目标，AI 自动拆解 |
 | 无排期依据 | 基于四象限 + GTD + 认知负荷的智能排期 |
@@ -55,7 +57,7 @@ AutoTask 是一款面向**自主学习者**的 AI 驱动任务规划与排期系
 
 ### 2.3 用户心理模型
 
-用户的核心需求不是"管理任务"，而是 **"告诉我要学什么、怎么学、从哪里学"**。AutoTask 的价值在于**消除决策摩擦**，让用户专注于执行本身。
+用户的核心需求不是"管理任务"，而是 **"告诉我要学什么、怎么学、从哪里学"**。拾级的价值在于**消除决策摩擦**，让用户专注于执行本身。
 
 ---
 
@@ -878,7 +880,7 @@ animation: `ganttGrow 0.9s cubic-bezier(.2,.8,.2,1) ${i * 0.12}s both`
 | `EAZO_AI_MODELS_JSON` | ✅ | 可用模型列表 JSON |
 | `EAZO_AI_MODEL_KEY` | ❌ | 默认 `deepseek.v3.2` |
 | `EAZO_AI_PROVIDER_MODE` | ❌ | `eazo`（默认）或 `byok` |
-| `NEXT_PUBLIC_APP_TITLE` | ❌ | App 标题（默认 AutoTask） |
+| `NEXT_PUBLIC_APP_TITLE` | ❌ | App 标题（默认 拾级） |
 | `NEXT_PUBLIC_APP_DESCRIPTION` | ❌ | App 描述 |
 | `CRON_SECRET` | ✅ | Vercel Cron 鉴权密钥 |
 

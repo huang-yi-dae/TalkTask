@@ -161,7 +161,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
             className="font-[650] tracking-[-0.03em] hover:opacity-70 transition-opacity"
             style={{ color: "#111111" }}
           >
-            ← AutoTask
+            ← 拾级
           </Link>
           <span
             className="text-[12px] tracking-[0.06em] uppercase"
