@@ -130,10 +130,10 @@ export function NewTaskInput({ onClose, onSubmit }: Props) {
   };
 
   const EXAMPLES = [
-    { icon: "🐍", label: "Python 入门", value: "从零开始掌握 Python 基础，能写简单脚本" },
-    { icon: "📐", label: "高考数学", value: "高考数学冲刺，重点突破导数与概率" },
-    { icon: "🗣", label: "英语口语", value: "提升英语口语，能流利做5分钟自我介绍" },
-    { icon: "⚛️", label: "React 实战", value: "掌握 React Hooks，能独立开发 Todo 应用" },
+    { icon: "🐍", label: "Python 入门",  value: "从零开始掌握 Python 基础，能写简单脚本" },
+    { icon: "📐", label: "高考数学",     value: "高考数学冲刺，重点突破导数与概率" },
+    { icon: "🗣",  label: "英语口语",    value: "提升英语口语，能流利做5分钟自我介绍" },
+    { icon: "⚛️", label: "React 实战",  value: "掌握 React Hooks，能独立开发 Todo 应用" },
   ];
 
   const placeholder = detectedUrl
@@ -174,7 +174,7 @@ export function NewTaskInput({ onClose, onSubmit }: Props) {
                   background: T.soft, border: `1px solid ${T.line}`,
                   borderRadius: 8, cursor: "pointer",
                   fontSize: 12, color: T.muted, fontWeight: 500,
-                  transition: "all 0.15s",
+                  transition: "background-color 0.15s ease-out, border-color 0.15s ease-out",
                   whiteSpace: "nowrap",
                 }}
                 onMouseEnter={e => {

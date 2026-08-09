@@ -144,7 +144,7 @@ function BloomAxis({ subtasks }: { subtasks: Subtask[] }) {
                 border: `2px solid ${isPast || isActive ? stage.color : T.line}`,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 boxShadow: isActive ? `0 0 0 5px ${stage.color}22` : "none",
-                transition: "all 0.3s",
+                transition: "box-shadow 0.3s ease-out, background-color 0.3s ease-out",
               }}>
                 {isPast && !isActive && (
                   <span style={{ fontSize: 9, color: "#fff", fontWeight: 700 }}>✓</span>
@@ -210,7 +210,7 @@ function SubtaskItem({
       borderBottom: `1px solid ${T.line}`,
       background: subtask.completed ? "#FAFAF9" : T.surface,
       opacity: subtask.completed ? 0.65 : 1,
-      transition: "all 0.2s",
+      transition: "opacity 0.2s ease-out, background-color 0.2s ease-out",
     }}>
       {/* 序号 */}
       <span style={{
@@ -230,7 +230,7 @@ function SubtaskItem({
           background: subtask.completed ? T.green : "transparent",
           cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center",
-          transition: "all 0.2s",
+          transition: "background-color 0.2s ease-out, border-color 0.2s ease-out",
         }}
       >
         {subtask.completed && (

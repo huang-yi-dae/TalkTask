@@ -1,4 +1,4 @@
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { tasks, subtasks } from "@/lib/db/schema";
 import type { Task, Subtask } from "@/lib/db/schema";
@@ -187,6 +187,27 @@ export async function toggleSubtask(
       completedAt: completed ? new Date() : null,
     })
     .where(eq(subtasks.id, id));
+}
+
+/**
+ * 调整子任务排期：startDay += delta（delta = 1 延后一天，-1 撤销延后），下限 0。
+ * 返回更新后的 startDay。
+ * 若子任务不属于该 taskId（越权尝试），返回 null 且不做任何修改。
+ */
+export async function postponeSubtask(id: string, taskId: string, delta = 1): Promise<number | null> {
+  const rows = await db
+    .select({ startDay: subtasks.startDay })
+    .from(subtasks)
+    // 约束 taskId：越权的 subtaskId 查不到，直接返回 null
+    .where(and(eq(subtasks.id, id), eq(subtasks.taskId, taskId)))
+    .limit(1);
+  if (rows.length === 0) return null;
+  const current = rows[0].startDay ?? 0;
+  const next = Math.max(0, current + delta);
+  await db.update(subtasks)
+    .set({ startDay: next })
+    .where(and(eq(subtasks.id, id), eq(subtasks.taskId, taskId)));
+  return next;
 }
 
 /** 返回该用户所有任务的排期摘要（用于全局接续计算） */

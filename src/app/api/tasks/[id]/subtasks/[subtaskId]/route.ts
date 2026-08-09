@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { getTaskById, toggleSubtask } from "@/lib/db/queries";
+import { getTaskById, toggleSubtask, postponeSubtask } from "@/lib/db/queries";
 
 export async function PATCH(
   request: NextRequest,
@@ -16,6 +16,17 @@ export async function PATCH(
   }
 
   const body = await request.json();
+
+  // 调整排期：postpone 延后一天 / unpostpone 撤销延后
+  if (body.action === "postpone" || body.action === "unpostpone") {
+    const delta = body.action === "unpostpone" ? -1 : 1;
+    const startDay = await postponeSubtask(subtaskId, id, delta);
+    if (startDay === null) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, startDay });
+  }
+
   const completed = Boolean(body.completed);
   await toggleSubtask(subtaskId, completed);
   return NextResponse.json({ ok: true });
