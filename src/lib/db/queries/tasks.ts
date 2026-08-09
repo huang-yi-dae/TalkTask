@@ -171,7 +171,12 @@ export async function createSubtasks(
   if (items.length === 0) return [];
   const rows = await db
     .insert(subtasks)
-    .values(items.map((s) => ({ ...s, taskId })))
+    .values(items.map((s) => ({
+      ...s,
+      taskId,
+      id: crypto.randomUUID(),
+      completed: false,
+    })))
     .returning();
   return rows;
 }
