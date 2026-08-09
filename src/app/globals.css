@@ -151,6 +151,20 @@ body {
 .pop-in-3 { animation: pop 0.7s cubic-bezier(.2,.8,.2,1) 0.5s  both; }
 .pop-in-4 { animation: pop 0.7s cubic-bezier(.2,.8,.2,1) 0.75s both; }
 
+/* ── Milestone unlock (方向B) ────────────────────────────────────── */
+@keyframes milestonePop {
+  0%   { transform: translate(-50%, -50%) scale(0.7); opacity: 0; }
+  60%  { transform: translate(-50%, -50%) scale(1.04); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+.milestone-pop { animation: milestonePop 0.5s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes milestoneBadge {
+  0%   { transform: scale(0.4) rotate(-12deg); opacity: 0; }
+  70%  { transform: scale(1.12) rotate(4deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+.milestone-badge { animation: milestoneBadge 0.7s cubic-bezier(.2,.8,.2,1) 0.15s both; }
+
 /* ── Gantt bar grow ──────────────────────────────────────────────── */
 @keyframes ganttGrow {
   from { transform: scaleX(0); }
