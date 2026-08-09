@@ -15,7 +15,10 @@ import { getSubtaskActualDates } from "./subtask-row";
 import { TimelineCard, TimelineSectionHeader } from "./timeline-card";
 import { SubtaskDetailModal } from "./subtask-detail-modal";
 import { CongratulationsModal, type CongratsData } from "./congrats-modal";
-import { StreakBar } from "./streak-bar";
+import { AchievementPanel } from "./achievement-panel";
+import { request } from "@/lib/api/request";
+import { encourageMessage, crossedMilestone, type Level } from "@/lib/growth";
+import { MilestoneUnlockModal } from "./milestone-unlock-modal";
 
 // ─── Design Tokens ────────────────────────────────────────────────────
 const T = {
@@ -55,6 +58,9 @@ export function HomePage() {
   const [postponeTarget, setPostponeTarget] = useState<SubtaskWithTask | null>(null);
   // 轻量 Toast 提示（失败提示 / 撤销等）
   const [toast, setToast] = useState<{ msg: string; actionLabel?: string; onAction?: () => void } | null>(null);
+  // 方向B：里程碑解锁弹窗
+  const [milestone, setMilestone] = useState<Level | null>(null);
+  const prevTotalRef = useRef<number | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -94,7 +100,7 @@ export function HomePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries.map((e) => e.stream.phase).join(",")]);
 
-  const handleToggleSubtask = useCallback(async (taskId: string, subtaskId: string, current: boolean) => {
+  const handleToggleSubtask = useCallback(async (taskId: string, subtaskId: string, current: boolean, silent = false) => {
     const next = !current;
     setSubtaskRows((prev) => prev.map((s) => s.id === subtaskId ? { ...s, completed: next } : s));
     setDetailSubtask((prev) => prev?.id === subtaskId ? { ...prev, completed: next } : prev);
@@ -111,9 +117,12 @@ export function HomePage() {
 
     // 仅在成功持久化后才计入 streak 与触发完成庆祝
     if (next) setStreakTick(t => t + 1);
+
+    // 是否整个大任务已完成（决定走庆祝弹窗还是即时微激励）
+    let allDone = false;
     setSubtaskRows((prev) => {
       const rows = prev.filter((s) => s.taskId === taskId);
-      const allDone = next && rows.length > 0 && rows.every((s) => (s.id === subtaskId ? next : s.completed));
+      allDone = next && rows.length > 0 && rows.every((s) => (s.id === subtaskId ? next : s.completed));
       if (allDone) {
         updateTaskStatusApi(taskId, "done").catch(() => {});
         const taskTitle = rows[0]?.taskTitle ?? "";
@@ -122,6 +131,25 @@ export function HomePage() {
       }
       return prev;
     });
+
+    // 方向D+B：即时微激励 & 里程碑解锁 —— 每完成一项就给反馈
+    if (next && !silent && !allDone) {
+      try {
+        const res = await request("/api/user/stats");
+        if (res.ok) {
+          const s = await res.json() as { todayCount: number; totalCompleted: number };
+          const after = s.totalCompleted;
+          const before = after - 1;
+          prevTotalRef.current = after;
+          const crossed = crossedMilestone(before, after);
+          if (crossed) {
+            setMilestone(crossed);
+          } else {
+            showToast(encourageMessage(s.todayCount, after));
+          }
+        }
+      } catch { /* 静默失败 */ }
+    }
   }, [showToast]);
 
   // 确认延迟：startDay += 1，乐观更新本地 + 调后端重排；成功后给"已延迟 · 撤销"Toast
@@ -153,7 +181,7 @@ export function HomePage() {
   // 跳过：标记完成，并给"已跳过 · 撤销"Toast
   const handleSkip = useCallback(async (row: SubtaskWithTask) => {
     if (row.completed) return;
-    await handleToggleSubtask(row.taskId, row.id, false);
+    await handleToggleSubtask(row.taskId, row.id, false, true);  // silent：不弹微激励，改弹"已跳过"
     showToast(`已跳过"${row.title}"`, "撤销", () => {
       handleToggleSubtask(row.taskId, row.id, true);
     });
@@ -273,8 +301,8 @@ export function HomePage() {
             <span style={{ color: T.muted, fontSize: 12, fontFamily: "var(--font-geist-mono), monospace" }}>共 {filteredRows.length} 项</span>
           </div>
 
-          {/* 连续性统计条 */}
-          {user && <StreakBar refreshTick={streakTick} />}
+          {/* 方向A：累计成就面板（有任务时展示） */}
+          {user && !fetching && subtaskRows.length > 0 && <AchievementPanel refreshTick={streakTick} />}
 
           <div className="canvas-scroll" style={{ flex: 1, overflowY: "auto" }}>
             {authLoading || fetching ? (
@@ -381,6 +409,9 @@ export function HomePage() {
       {showInput && <NewTaskInput onClose={() => setShowInput(false)} onSubmit={(goal) => startAnalysis(goal)} />}
       {detailSubtask && <SubtaskDetailModal row={detailSubtask} onClose={() => setDetailSubtask(null)} onToggle={() => handleToggleSubtask(detailSubtask.taskId, detailSubtask.id, detailSubtask.completed)} onOpenTask={() => { router.push(`/task/${detailSubtask.taskId}`); setDetailSubtask(null); }} />}
       {congrats && <CongratulationsModal data={congrats} onClose={() => setCongrats(null)} onLearnMore={(taskId) => { setFocusedId(taskId); focusTask(taskId); setCongrats(null); }} />}
+
+      {/* 方向B：里程碑等级解锁弹窗 */}
+      {milestone && <MilestoneUnlockModal level={milestone} onClose={() => setMilestone(null)} />}
 
       {/* 延迟确认弹窗 */}
       {postponeTarget && (
