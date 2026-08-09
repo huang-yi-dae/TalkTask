@@ -25,6 +25,6 @@ export async function PATCH(
   }
 
   const completed = Boolean(body.completed);
-  await toggleSubtask(subtaskId, completed);
+  await toggleSubtask(subtaskId, completed, id);
   return NextResponse.json({ ok: true });
 }

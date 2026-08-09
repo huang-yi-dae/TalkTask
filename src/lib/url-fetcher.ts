@@ -29,6 +29,7 @@ import { fetchArxiv } from "./fetchers/arxiv";
 import { fetchArticle } from "./fetchers/article";
 import { fetchCourse } from "./fetchers/course";
 import { fetchNpm, fetchPypi } from "./fetchers/package";
+import { isSafePublicUrl } from "./ssrf-guard";
 
 // ─── 类型定义 ────────────────────────────────────────────────────────────
 
@@ -310,6 +311,9 @@ function buildVideoContent(url: string, urlType: "youtube" | "bilibili"): Fetche
  * 任何错误都静默降级，返回 null
  */
 export async function fetchUrlContent(url: string): Promise<FetchedContent | null> {
+  // SSRF 防护：拒绝私网/环回/元数据地址与非 http(s) 协议
+  if (!isSafePublicUrl(url)) return null;
+
   const urlType = detectUrlType(url);
 
   try {
