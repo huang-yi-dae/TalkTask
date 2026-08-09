@@ -25,7 +25,7 @@ const SITE_URL = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
   : undefined;
 
-const SITE_TITLE = process.env.NEXT_PUBLIC_APP_TITLE?.trim() || "AutoTask";
+const SITE_TITLE = process.env.NEXT_PUBLIC_APP_TITLE?.trim() || "拾级";
 const SITE_DESCRIPTION =
   process.env.NEXT_PUBLIC_APP_DESCRIPTION?.trim() ||
   "Type a goal, let AI plan the rest.";
@@ -34,10 +34,9 @@ export const metadata: Metadata = {
   ...(SITE_URL ? { metadataBase: new URL(SITE_URL) } : {}),
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
-  icons: { icon: "https://eazo.ai/favicon.ico" },
   openGraph: {
     type: "website",
-    siteName: "Eazo",
+    siteName: SITE_TITLE,
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     url: "/",

@@ -1,4 +1,4 @@
-# AutoTask → Vercel 部署清单
+# 拾级（Gradus）→ Vercel 部署清单
 
 从零到拿到公网链接，约 20 分钟。全程免费、不绑卡、不备案。
 
@@ -106,7 +106,7 @@ AI_PROVIDER_BASE_URL      https://api.deepseek.com/v1
 AI_PROVIDER_API_KEY       sk-xxxx
 AI_PROVIDER_MODEL         deepseek-chat
 CRON_SECRET               <openssl rand -hex 32 生成的随机串>
-NEXT_PUBLIC_APP_TITLE     AutoTask · 学习规划智能体
+NEXT_PUBLIC_APP_TITLE     拾级 · 学习规划智能体
 ```
 
 > `EAZO_AI_PROVIDER_MODE=byok` 这条**必填**，漏了会走已废弃的平台代理并报
