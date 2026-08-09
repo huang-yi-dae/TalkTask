@@ -87,12 +87,24 @@ export async function GET(request: NextRequest) {
       .where(and(eq(tasks.userId, user.id), eq(tasks.status, "active")));
     const activeTaskCount = activeTaskRows[0]?.count ?? 0;
 
+    // 学习天数（去重完成日期数）
+    const learnDays = completedDates.size;
+
+    // 总目标数（全部任务，含已完成）
+    const totalGoalsRows = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(tasks)
+      .where(eq(tasks.userId, user.id));
+    const totalGoals = totalGoalsRows[0]?.count ?? 0;
+
     return NextResponse.json({
       streak,
       todayCount,
       weekCount,
       totalCompleted: rows.length,
       activeTaskCount,
+      learnDays,
+      totalGoals,
     });
   } catch (err) {
     console.error("[stats]", err);

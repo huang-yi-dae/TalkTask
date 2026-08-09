@@ -16,6 +16,9 @@ import { TimelineCard, TimelineSectionHeader } from "./timeline-card";
 import { SubtaskDetailModal } from "./subtask-detail-modal";
 import { CongratulationsModal, type CongratsData } from "./congrats-modal";
 import { StreakBar } from "./streak-bar";
+import { AchievementPanel, LevelBadge } from "./achievement-panel";
+import { MilestoneUnlockModal } from "./milestone-unlock-modal";
+import { crossedMilestone, type Level } from "@/lib/growth";
 
 // ─── Design Tokens ────────────────────────────────────────────────────
 const T = {
@@ -50,6 +53,8 @@ export function HomePage() {
   const [congrats, setCongrats] = useState<CongratsData | null>(null);
   const [highlightedSubtaskId, setHighlightedSubtaskId] = useState<string | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [milestone, setMilestone] = useState<Level | null>(null);
+  const totalCompletedRef = useRef<number>(0);
 
   const {
     entries, focusedId, setFocusedId,
@@ -74,6 +79,20 @@ export function HomePage() {
     getTasksWithSubtasks().then((tasks) => hydrateFromDB(tasks)).catch(() => {});
   }, [user, hydrateFromDB]);
 
+  // 成长体系：登录后拉一次统计，建立累计完成数基线（用于里程碑跨越检测）
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/user/stats");
+        if (res.ok) {
+          const s = await res.json();
+          totalCompletedRef.current = s.totalCompleted ?? 0;
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [user]);
+
   // Refresh left list when analysis completes
   useEffect(() => {
     const done = entries.some((e) => e.stream.phase === "done");
@@ -93,8 +112,18 @@ export function HomePage() {
     setSubtaskRows((prev) => prev.map((s) => s.id === subtaskId ? { ...s, completed: next } : s));
     setDetailSubtask((prev) => prev?.id === subtaskId ? { ...prev, completed: next } : prev);
     await toggleSubtask(taskId, subtaskId, next).catch(() => {});
-    // 完成时刷新 streak 统计
-    if (next) setStreakTick(t => t + 1);
+    // 完成时刷新 streak 统计 + 检测里程碑跨越
+    if (next) {
+      setStreakTick(t => t + 1);
+      const before = totalCompletedRef.current;
+      fetch("/api/user/stats").then((r) => (r.ok ? r.json() : null)).then((s) => {
+        if (!s) return;
+        const after = s.totalCompleted ?? 0;
+        totalCompletedRef.current = after;
+        const crossed = crossedMilestone(before, after);
+        if (crossed) setMilestone(crossed);
+      }).catch(() => {});
+    }
     setSubtaskRows((prev) => {
       const rows = prev.filter((s) => s.taskId === taskId);
       const allDone = next && rows.length > 0 && rows.every((s) => (s.id === subtaskId ? next : s.completed));
@@ -131,6 +160,7 @@ export function HomePage() {
   }, []);
 
   const filteredRows = sortSubtasks(filterSubtasksByTime(subtaskRows, timeFilter));
+  const pendingCount = subtaskRows.filter((s) => !s.completed).length;
   const todayStr = new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" });
 
   // ── 全局键盘快捷键 ──────────────────────────────────────────────
@@ -177,6 +207,7 @@ export function HomePage() {
           <div style={{ color: T.muted, fontSize: 11, marginTop: 1 }}>订单式任务系统原型</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {user && <LevelBadge refreshTick={streakTick} />}
           {!authLoading && !user && <button onClick={() => auth.login().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: `1px solid ${T.line}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}>登录</button>}
           {user && <button onClick={() => auth.logout().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: "none", cursor: "pointer" }}>退出</button>}
           <button onClick={() => { if (!user) { auth.login().catch(() => {}); return; } setShowInput(true); }}
@@ -196,6 +227,8 @@ export function HomePage() {
 
           {/* 连续性统计条 */}
           {user && <StreakBar refreshTick={streakTick} />}
+          {/* 成长体系 · 学习日历面板 */}
+          {user && <AchievementPanel refreshTick={streakTick} pending={pendingCount} />}
 
           <div style={{ flex: 1, overflowY: "auto" }}>
             {authLoading || fetching ? (
@@ -300,6 +333,7 @@ export function HomePage() {
       {showInput && <NewTaskInput onClose={() => setShowInput(false)} onSubmit={(goal) => startAnalysis(goal)} />}
       {detailSubtask && <SubtaskDetailModal row={detailSubtask} onClose={() => setDetailSubtask(null)} onToggle={() => handleToggleSubtask(detailSubtask.taskId, detailSubtask.id, detailSubtask.completed)} onOpenTask={() => { router.push(`/task/${detailSubtask.taskId}`); setDetailSubtask(null); }} />}
       {congrats && <CongratulationsModal data={congrats} onClose={() => setCongrats(null)} onLearnMore={(taskId) => { setFocusedId(taskId); focusTask(taskId); setCongrats(null); }} />}
+      {milestone && <MilestoneUnlockModal level={milestone} onClose={() => setMilestone(null)} />}
     </div>
   );
 }
