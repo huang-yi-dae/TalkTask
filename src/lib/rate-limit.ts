@@ -35,6 +35,33 @@ export interface RateLimitResult {
  * @param limit    窗口内允许的最大次数
  * @param windowMs 窗口时长（毫秒）
  */
+/**
+ * 写接口限流的便捷封装：命中上限时直接返回 429 Response（含 Retry-After），
+ * 未命中返回 null（调用方继续处理）。统一各写端点的限流响应格式。
+ *
+ * @param key      隔离键（建议 `endpoint:${userId}`）
+ * @param limit    窗口内允许的最大次数（默认 60）
+ * @param windowMs 窗口时长（默认 60s）
+ */
+export function enforceRateLimit(
+  key: string,
+  limit = 60,
+  windowMs = 60_000,
+): Response | null {
+  const rl = rateLimit(key, limit, windowMs);
+  if (rl.ok) return null;
+  return new Response(
+    JSON.stringify({ error: "请求过于频繁，请稍后再试" }),
+    {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": String(rl.retryAfterSec),
+      },
+    },
+  );
+}
+
 export function rateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
   const now = Date.now();
   sweep(now);

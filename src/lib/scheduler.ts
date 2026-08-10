@@ -566,27 +566,3 @@ export function todayMidnight(): Date {
 export function diffDays(a: Date, b: Date): number {
   return Math.floor((b.getTime() - a.getTime()) / 86400000);
 }
-
-// ─── Backward-compatible exports（保持旧调用签名可用）──────────────────
-
-/** @deprecated 使用 registerDailySlot 代替 */
-export function checkTopicConflict(
-  dateStr: string,
-  topicCategory: string,
-  dailyTopicMap: Map<string, Map<string, number>>,
-): boolean {
-  const dayMap = dailyTopicMap.get(dateStr);
-  if (!dayMap) return false;
-  return (dayMap.get(topicCategory) ?? 0) >= MAX_SAME_TOPIC_PER_DAY;
-}
-
-/** @deprecated 使用 registerDailySlot 代替 */
-export function registerTopicUsage(
-  dateStr: string,
-  topicCategory: string,
-  dailyTopicMap: Map<string, Map<string, number>>,
-): void {
-  if (!dailyTopicMap.has(dateStr)) dailyTopicMap.set(dateStr, new Map());
-  const dayMap = dailyTopicMap.get(dateStr)!;
-  dayMap.set(topicCategory, (dayMap.get(topicCategory) ?? 0) + 1);
-}
