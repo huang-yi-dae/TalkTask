@@ -42,11 +42,17 @@ export const maxDuration = 300;
  * returns one JSON payload instead of an SSE stream. The AI call goes through
  * the BYOK provider (EAZO_AI_PROVIDER_MODE=byok) configured via .env.
  *
- * 带重试：DeepSeek v4-flash 在 json_object 模式下偶发返回空 content（官方已知
- * bug），遇到空响应自动重试 2 次，避免单点偶发失败阻断整条流水线。
+ * 容错策略（双模式）：
+ * 1. 首选 json_object 模式 + 最多 2 次重试（DeepSeek v4-flash 在该模式下偶发
+ *    返回空 content，官方已知 bug，需重试缓解）。
+ * 2. 若 json_object 模式连续失败，fallback 到普通 text 模式再试一次（同样可能
+ *    命中空 content bug，但不同请求路径成功率更高）。
+ * 两层都失败时返回空字符串，由调用方输出精确错误提示。
  */
 async function callAI(systemPrompt: string, userMessage: string, retries = 2): Promise<string> {
   let lastError: Error | undefined;
+
+  // 第一轮：json_object 模式 + 重试
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const completion = await appAi.chat({
@@ -66,20 +72,53 @@ async function callAI(systemPrompt: string, userMessage: string, retries = 2): P
         return content;
       }
       // 空 content：DeepSeek json_object 模式偶发 bug，记录并进入重试
-      lastError = new Error("AI returned empty content");
+      lastError = new Error("AI returned empty content (json_object)");
       console.warn(
-        `[AutoTask] AI returned empty content (attempt ${attempt + 1}/${retries + 1}), retrying...`
+        `[AutoTask] AI returned empty content (json_object attempt ${attempt + 1}/${retries + 1}), retrying...`
       );
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      console.warn(`[AutoTask] AI call failed (attempt ${attempt + 1}/${retries + 1}):`, lastError.message);
+      console.warn(
+        `[AutoTask] AI call failed (json_object attempt ${attempt + 1}/${retries + 1}):`,
+        lastError.message
+      );
     }
     // 最后一次失败后不再等待
     if (attempt < retries) {
       await new Promise((res) => setTimeout(res, 800 * (attempt + 1)));
     }
   }
-  // 全部重试耗尽仍失败，返回空字符串让外层输出精确错误提示
+
+  // 第二轮：json_object 模式连续失败 → fallback 到普通 text 模式
+  // DeepSeek 官方对该 bug 的唯一建议是「改 prompt / 换请求路径」，text 模式是
+  // 不同请求路径，命中空 content 的概率通常低于 json_object 模式。
+  try {
+    console.warn("[AutoTask] falling back to plain text mode (no response_format)");
+    const completion = await appAi.chat({
+      model: process.env.AI_PROVIDER_MODEL || "deepseek-chat",
+      messages: [
+        {
+          role: "system",
+          content:
+            systemPrompt +
+            "\n请只输出一个 JSON 对象，不要包含任何 markdown 代码块或额外说明文字。",
+        },
+        { role: "user", content: userMessage },
+      ],
+      stream: false,
+      max_tokens: 4000,
+    });
+    const content = completion.choices?.[0]?.message?.content ?? "";
+    if (content.trim()) {
+      return content;
+    }
+    lastError = new Error("AI returned empty content (text fallback)");
+  } catch (err) {
+    lastError = err instanceof Error ? err : new Error(String(err));
+    console.warn("[AutoTask] AI call failed (text fallback):", lastError.message);
+  }
+
+  // 两层都失败，返回空字符串让外层输出精确错误提示
   return "";
 }
 
