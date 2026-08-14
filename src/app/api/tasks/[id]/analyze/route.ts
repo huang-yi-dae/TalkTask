@@ -41,21 +41,46 @@ export const maxDuration = 300;
  * Buffered (non-streaming) so the route completes within serverless limits and
  * returns one JSON payload instead of an SSE stream. The AI call goes through
  * the BYOK provider (EAZO_AI_PROVIDER_MODE=byok) configured via .env.
+ *
+ * 带重试：DeepSeek v4-flash 在 json_object 模式下偶发返回空 content（官方已知
+ * bug），遇到空响应自动重试 2 次，避免单点偶发失败阻断整条流水线。
  */
-async function callAI(systemPrompt: string, userMessage: string): Promise<string> {
-  const completion = await appAi.chat({
-    model: process.env.AI_PROVIDER_MODEL || "deepseek-chat",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
-    stream: false,
-    // 调大上限，避免复杂任务的 Plan JSON 被截断（截断会导致 JSON 不完整、解析失败）
-    max_tokens: 4000,
-    // 强制模型只输出纯 JSON，消除 markdown 代码块包裹 / 额外说明文字导致的解析失败
-    response_format: { type: "json_object" },
-  });
-  return completion.choices?.[0]?.message?.content ?? "";
+async function callAI(systemPrompt: string, userMessage: string, retries = 2): Promise<string> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const completion = await appAi.chat({
+        model: process.env.AI_PROVIDER_MODEL || "deepseek-chat",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        stream: false,
+        // 调大上限，避免复杂任务的 Plan JSON 被截断（截断会导致 JSON 不完整、解析失败）
+        max_tokens: 4000,
+        // 强制模型只输出纯 JSON，消除 markdown 代码块包裹 / 额外说明文字导致的解析失败
+        response_format: { type: "json_object" },
+      });
+      const content = completion.choices?.[0]?.message?.content ?? "";
+      if (content.trim()) {
+        return content;
+      }
+      // 空 content：DeepSeek json_object 模式偶发 bug，记录并进入重试
+      lastError = new Error("AI returned empty content");
+      console.warn(
+        `[AutoTask] AI returned empty content (attempt ${attempt + 1}/${retries + 1}), retrying...`
+      );
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[AutoTask] AI call failed (attempt ${attempt + 1}/${retries + 1}):`, lastError.message);
+    }
+    // 最后一次失败后不再等待
+    if (attempt < retries) {
+      await new Promise((res) => setTimeout(res, 800 * (attempt + 1)));
+    }
+  }
+  // 全部重试耗尽仍失败，返回空字符串让外层输出精确错误提示
+  return "";
 }
 
 function parseJson<T>(text: string): T | null {
