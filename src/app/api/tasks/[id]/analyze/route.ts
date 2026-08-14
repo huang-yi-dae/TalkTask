@@ -50,7 +50,10 @@ async function callAI(systemPrompt: string, userMessage: string): Promise<string
       { role: "user", content: userMessage },
     ],
     stream: false,
-    max_tokens: 2500,
+    // 调大上限，避免复杂任务的 Plan JSON 被截断（截断会导致 JSON 不完整、解析失败）
+    max_tokens: 4000,
+    // 强制模型只输出纯 JSON，消除 markdown 代码块包裹 / 额外说明文字导致的解析失败
+    response_format: { type: "json_object" },
   });
   return completion.choices?.[0]?.message?.content ?? "";
 }
@@ -191,7 +194,14 @@ export async function POST(
     }
     interface PlanResult { subtasks?: PlanSubtask[] }
     const plan = parseJson<PlanResult>(planRaw);
-    if (!plan?.subtasks?.length) throw new Error("AI 未生成有效计划");
+    if (!plan || !Array.isArray(plan.subtasks) || plan.subtasks.length === 0) {
+      if (!planRaw || !planRaw.trim()) {
+        throw new Error("AI 返回内容为空，可能模型未响应或连接异常");
+      }
+      // 记录原始返回前缀，便于线上 Vercel 日志排查（截断避免刷屏）
+      console.error("[AutoTask] plan stage raw (truncated):", planRaw.slice(0, 500));
+      throw new Error("AI 返回了内容但解析不出子任务列表，可能是返回格式异常或被截断");
+    }
 
     // ── Stage 4: Validate ─────────────────────────────────────────
     const validateRaw = await callAI(
