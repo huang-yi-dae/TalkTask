@@ -70,16 +70,6 @@ export async function GET(request: NextRequest) {
       ));
     const weekCount = weekRows[0]?.count ?? 0;
 
-    // 今天总计（含未完成）
-    const todayTotalRows = await db
-      .select({ count: sql<number>`COUNT(*)::int` })
-      .from(subtasks)
-      .innerJoin(tasks, eq(subtasks.taskId, tasks.id))
-      .where(and(
-        eq(tasks.userId, user.id),
-        eq(subtasks.completed, false),
-      ));
-
     // 活跃任务数
     const activeTaskRows = await db
       .select({ count: sql<number>`COUNT(*)::int` })
