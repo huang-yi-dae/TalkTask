@@ -36,7 +36,7 @@ export function NotFoundPage() {
             "mt-8 min-w-[10rem] gap-2",
           )}
         >
-          <Home className="size-4" />
+          <Home className="size-4" strokeWidth={1.5} />
           {t("errors.notFound.backHome")}
         </Link>
       </div>

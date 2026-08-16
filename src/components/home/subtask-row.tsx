@@ -1,6 +1,7 @@
 "use client";
 
 import type { SubtaskWithTask } from "@/lib/api/tasks";
+import { useTranslation } from "react-i18next";
 
 const T = {
   surface: "#FFFFFF", soft: "#F1F2EE", line: "#E7E7E2",
@@ -10,8 +11,6 @@ const T = {
 
 // Priority label helpers
 const URGENCY_COLORS = ["", "#ef4444", "#f97316", "#eab308", "#84cc16", "#22c55e"];
-const URGENCY_LABELS = ["", "极紧急", "较紧急", "一般", "较宽松", "不紧急"];
-const IMPORTANCE_LABELS = ["", "极重要", "较重要", "一般", "较次要", "参考"];
 
 interface Props {
   row: SubtaskWithTask;
@@ -24,6 +23,9 @@ interface Props {
 }
 
 export function SubtaskRow({ row, isSelected, isHighlighted, onOpen, onSelect, onDeleteTask, onToggle }: Props) {
+  const { t } = useTranslation();
+  const URGENCY_LABELS = t("subtaskRow.urgency", { returnObjects: true }) as string[];
+  const IMPORTANCE_LABELS = t("subtaskRow.importance", { returnObjects: true }) as string[];
   const dateRange = getSubtaskDateRange(row);
 
   // Parse keywords
@@ -87,7 +89,7 @@ export function SubtaskRow({ row, isSelected, isHighlighted, onOpen, onSelect, o
             </span>
             <span style={{ color: T.line, flexShrink: 0 }}>·</span>
             <span style={{ color: T.muted, fontSize: 11, fontFamily: "var(--font-geist-mono), monospace", flexShrink: 0 }}>
-              {dateRange ?? `${row.durationDays}天`}
+              {dateRange ?? t("subtaskRow.days", { count: row.durationDays })}
             </span>
           </div>
 
@@ -122,7 +124,7 @@ export function SubtaskRow({ row, isSelected, isHighlighted, onOpen, onSelect, o
         <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0, marginTop: 1 }}>
           <button
             onClick={(e) => { e.stopPropagation(); onToggle(e); }}
-            title={row.completed ? "取消完成" : "标记已完成"}
+            title={row.completed ? t("subtaskRow.markUndone") : t("subtaskRow.markDone")}
             style={{
               width: 26, height: 26, borderRadius: 6,
               border: `1px solid ${row.completed ? T.green : T.line}`,
@@ -134,7 +136,7 @@ export function SubtaskRow({ row, isSelected, isHighlighted, onOpen, onSelect, o
           >✓</button>
           <button
             onClick={(e) => { e.stopPropagation(); onDeleteTask(row.taskId, e); }}
-            title="删除大任务"
+            title={t("subtaskRow.deleteTask")}
             style={{
               width: 26, height: 26, borderRadius: 6, border: "none",
               background: "transparent", color: T.muted, fontSize: 16,

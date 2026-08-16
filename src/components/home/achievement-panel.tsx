@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { request } from "@/lib/api/request";
 import { getLevel, getNextLevel, getLevelProgress } from "@/lib/growth";
 
@@ -34,7 +35,9 @@ interface Props {
  * 上方区域：标题「学习日历」+ 等级徽章/Lv/升级进度 + 连续天数 + 待完成；
  * 下方区域：今日 / 本周 / 累计完成 / 学习天数 / 剩余目标 内联指标条。
  */
-export function AchievementPanel({ refreshTick = 0, pending = 0, title = "学习日历" }: Props) {
+export function AchievementPanel({ refreshTick = 0, pending = 0, title }: Props) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t("achievement.defaultTitle");
   const [stats, setStats] = useState<Stats | null>(null);
 
   const fetchStats = useCallback(async () => {
@@ -44,6 +47,8 @@ export function AchievementPanel({ refreshTick = 0, pending = 0, title = "学习
     } catch { /* ignore */ }
   }, []);
 
+  // fetchStats 内部在 await 之后才 setState，非同步级联
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchStats(); }, [fetchStats, refreshTick]);
 
   if (!stats) return null;
@@ -57,11 +62,11 @@ export function AchievementPanel({ refreshTick = 0, pending = 0, title = "学习
 
   // 底部内联指标条（今日 / 本周 / 累计完成 / 学习天数 / 剩余目标）
   const stripStats: { label: string; value: string; unit: string; color: string }[] = [
-    { label: "今日完成", value: String(todayCount), unit: "项", color: todayCount > 0 ? T.green : T.ink },
-    { label: "本周完成", value: `${weekCount}/${weekGoal}`, unit: "", color: weekPct >= 1 ? T.green : T.accent },
-    { label: "累计完成", value: String(totalCompleted), unit: "步", color: T.ink },
-    { label: "学习天数", value: String(learnDays), unit: "天", color: T.ink },
-    { label: "剩余目标", value: String(activeTaskCount), unit: "个", color: T.ink },
+    { label: t("achievement.todayDone"), value: String(todayCount), unit: t("achievement.unitItem"), color: todayCount > 0 ? T.green : T.ink },
+    { label: t("achievement.weekDone"), value: `${weekCount}/${weekGoal}`, unit: "", color: weekPct >= 1 ? T.green : T.accent },
+    { label: t("achievement.totalDone"), value: String(totalCompleted), unit: t("achievement.unitStep"), color: T.ink },
+    { label: t("achievement.learnDays"), value: String(learnDays), unit: t("achievement.unitDay"), color: T.ink },
+    { label: t("achievement.remainingGoal"), value: String(activeTaskCount), unit: t("achievement.unitCount"), color: T.ink },
   ];
 
   return (
@@ -73,7 +78,7 @@ export function AchievementPanel({ refreshTick = 0, pending = 0, title = "学习
     }}>
       {/* 上方区域 · 头部：标题「学习日历」+ 连续天数 + 待完成 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 13px 10px" }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: T.ink, letterSpacing: "-0.01em" }}>{title}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: T.ink, letterSpacing: "-0.01em" }}>{resolvedTitle}</span>
         <div style={{ flex: 1 }} />
         {/* 连续天数 */}
         <div style={{
@@ -84,7 +89,7 @@ export function AchievementPanel({ refreshTick = 0, pending = 0, title = "学习
         }}>
           <span style={{ fontSize: 12 }}>{streak >= 3 ? "🔥" : "📅"}</span>
           <span style={{ fontSize: 11, fontWeight: 700, color: streak >= 3 ? T.orange : T.ink }}>
-            {streak > 0 ? `${streak}天` : "今日"}
+            {streak > 0 ? t("achievement.streakDays", { count: streak }) : t("achievement.today")}
           </span>
         </div>
         {/* 待完成 */}
@@ -94,7 +99,7 @@ export function AchievementPanel({ refreshTick = 0, pending = 0, title = "学习
           border: `1px solid ${pending > 0 ? `${T.orange}33` : T.line}`,
           borderRadius: 8, padding: "3px 8px",
         }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: pending > 0 ? T.orange : T.muted }}>待完成 {pending}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: pending > 0 ? T.orange : T.muted }}>{t("achievement.pending", { count: pending })}</span>
         </div>
       </div>
 
@@ -121,6 +126,7 @@ export function AchievementPanel({ refreshTick = 0, pending = 0, title = "学习
  * 显示：等级图标 + Lv·名称 + 升级进度条 + 升级文案。
  */
 export function LevelBadge({ refreshTick = 0 }: { refreshTick?: number }) {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<Stats | null>(null);
 
   useEffect(() => {
@@ -161,7 +167,7 @@ export function LevelBadge({ refreshTick = 0 }: { refreshTick?: number }) {
           <div style={{ width: `${Math.round(prog.pct * 100)}%`, height: "100%", background: `${level.color}59`, borderRadius: 3, transition: "width 0.5s ease" }} />
         </div>
         <div style={{ fontSize: 9.5, color: T.muted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {next ? `再完成 ${prog.need - prog.done} 步升级「${next.name}」` : "已达最高等级 👑"}
+          {next ? t("achievement.toNextLevel", { count: prog.need - prog.done, name: next.name }) : t("achievement.maxLevel")}
         </div>
       </div>
     </div>

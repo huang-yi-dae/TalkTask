@@ -64,7 +64,7 @@ export function LanguageSwitcher() {
 
   return (
     <div className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-1 shadow-sm">
-      <Languages className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+      <Languages className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.5} aria-hidden />
       <label htmlFor="app-locale" className="sr-only">
         {t("language.label")}
       </label>

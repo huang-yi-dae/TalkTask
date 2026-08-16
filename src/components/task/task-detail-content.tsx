@@ -10,6 +10,8 @@
  */
 
 import type { Subtask } from "@/lib/db/schema";
+import { useTranslation } from "react-i18next";
+import { getResolvedLocale } from "@/i18n";
 import type { TaskWithSubtasks } from "@/lib/api/tasks";
 import { GanttChart } from "@/components/task/gantt-chart";
 import { openExternalUrl } from "@/lib/safe-url";
@@ -35,12 +37,12 @@ const T = {
 
 // ─── Bloom 配置 ──────────────────────────────────────────────────────────
 const BLOOM = [
-  { level: 1, label: "记忆",  icon: "📖", color: "#94a3b8" },
-  { level: 2, label: "理解",  icon: "💡", color: "#60a5fa" },
-  { level: 3, label: "应用",  icon: "🔧", color: "#34d399" },
-  { level: 4, label: "分析",  icon: "🔍", color: "#f97316" },
-  { level: 5, label: "评估",  icon: "⚖️", color: "#a78bfa" },
-  { level: 6, label: "创造",  icon: "✨", color: "#f43f5e" },
+  { level: 1, icon: "📖", color: "#94a3b8" },
+  { level: 2, icon: "💡", color: "#60a5fa" },
+  { level: 3, icon: "🔧", color: "#34d399" },
+  { level: 4, icon: "🔍", color: "#f97316" },
+  { level: 5, icon: "⚖️", color: "#a78bfa" },
+  { level: 6, icon: "✨", color: "#f43f5e" },
 ] as const;
 
 // ─── Resource type ───────────────────────────────────────────────────────
@@ -85,6 +87,7 @@ function ProgressRing({ pct, size = 72, color = T.accent }: {
 
 // ─── Bloom 进度轴 ────────────────────────────────────────────────────────
 function BloomAxis({ subtasks }: { subtasks: Subtask[] }) {
+  const { t } = useTranslation();
   // 优先读真实 bloomLevel 字段，旧数据降级用 urgency 反推
   const getBloom = (s: Subtask): number => {
     if (s.bloomLevel && s.bloomLevel >= 1 && s.bloomLevel <= 6) return s.bloomLevel;
@@ -92,8 +95,6 @@ function BloomAxis({ subtasks }: { subtasks: Subtask[] }) {
   };
 
   const bloomLevels = subtasks.map(getBloom);
-  const completedBlooms = subtasks.filter(s => s.completed).map(getBloom);
-
   const maxBloom = bloomLevels.length > 0 ? Math.max(...bloomLevels) : 3;
   const stages = BLOOM.slice(0, maxBloom);
 
@@ -110,7 +111,7 @@ function BloomAxis({ subtasks }: { subtasks: Subtask[] }) {
       borderRadius: 14, padding: "16px 18px",
     }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: T.muted, letterSpacing: "0.04em", marginBottom: 14 }}>
-        BLOOM 认知进度
+        {t("taskDetail.bloom.title")}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
         {stages.map((stage, idx) => {
@@ -145,7 +146,7 @@ function BloomAxis({ subtasks }: { subtasks: Subtask[] }) {
                 border: `2px solid ${isPast || isActive ? stage.color : T.line}`,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 boxShadow: isActive ? `0 0 0 5px ${stage.color}22` : "none",
-                transition: "all 0.3s",
+                transition: "box-shadow 0.3s ease-out, background-color 0.3s ease-out",
               }}>
                 {isPast && !isActive && (
                   <span style={{ fontSize: 9, color: "#fff", fontWeight: 700 }}>✓</span>
@@ -159,7 +160,7 @@ function BloomAxis({ subtasks }: { subtasks: Subtask[] }) {
                 color: isActive ? stage.color : isPast ? T.muted : T.line,
                 whiteSpace: "nowrap",
               }}>
-                {stage.label}
+                {t(`taskDetail.bloom.labels.${stage.level}`)}
               </span>
             </div>
           );
@@ -168,8 +169,8 @@ function BloomAxis({ subtasks }: { subtasks: Subtask[] }) {
       {/* 当前阶段说明 */}
       <div style={{ marginTop: 10, fontSize: 11, color: allDone ? T.green : (BLOOM.find(b => b.level === currentBloom)?.color ?? T.muted) }}>
         {allDone
-          ? "🎉 全部完成！认知目标达成"
-          : `当前阶段：${BLOOM.find(b => b.level === currentBloom)?.icon} L${currentBloom} ${BLOOM.find(b => b.level === currentBloom)?.label}`}
+          ? t("taskDetail.bloom.allDone")
+          : t("taskDetail.bloom.current", { icon: BLOOM.find(b => b.level === currentBloom)?.icon, level: currentBloom, label: t(`taskDetail.bloom.labels.${currentBloom}`) })}
       </div>
     </div>
   );
@@ -183,6 +184,7 @@ function SubtaskItem({
   index: number;
   onToggle: (id: string, current: boolean) => void;
 }) {
+  const { t } = useTranslation();
   // 解析资源
   let resources: Resource[] = [];
   if (subtask.resources) {
@@ -201,7 +203,7 @@ function SubtaskItem({
   const dateLabel = (() => {
     const s = subtask.startDay;
     const e = subtask.startDay + subtask.durationDays - 1;
-    return s === e ? `第 ${s + 1} 天` : `第 ${s + 1}–${e + 1} 天`;
+    return s === e ? t("taskDetail.dayRange.single", { start: s + 1 }) : t("taskDetail.dayRange.range", { start: s + 1, end: e + 1 });
   })();
 
   return (
@@ -211,7 +213,7 @@ function SubtaskItem({
       borderBottom: `1px solid ${T.line}`,
       background: subtask.completed ? "#FAFAF9" : T.surface,
       opacity: subtask.completed ? 0.65 : 1,
-      transition: "all 0.2s",
+      transition: "opacity 0.2s ease-out, background-color 0.2s ease-out",
     }}>
       {/* 序号 */}
       <span style={{
@@ -231,7 +233,7 @@ function SubtaskItem({
           background: subtask.completed ? T.green : "transparent",
           cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center",
-          transition: "all 0.2s",
+          transition: "background-color 0.2s ease-out, border-color 0.2s ease-out",
         }}
       >
         {subtask.completed && (
@@ -264,7 +266,7 @@ function SubtaskItem({
             border: `1px solid ${bloomStage.color}30`,
             borderRadius: 4, padding: "2px 7px",
           }}>
-            {bloomStage.icon} {bloomStage.label}
+            {bloomStage.icon} {t(`taskDetail.bloom.labels.${bloomStage.level}`)}
           </span>
           {/* 关键词 */}
           {keywords.slice(0, 2).map((kw, i) => (
@@ -283,7 +285,7 @@ function SubtaskItem({
               border: "1px solid rgba(59,122,255,0.2)",
               borderRadius: 4, padding: "2px 6px",
             }}>
-              📚 {resources.length} 个资源
+              📚 {t("taskDetail.resourceCount", { count: resources.length })}
             </span>
           )}
         </div>
@@ -292,7 +294,7 @@ function SubtaskItem({
       {/* 工期 + 日期 */}
       <div style={{ flexShrink: 0, textAlign: "right", minWidth: 48 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: T.green, letterSpacing: "-0.02em" }}>
-          {subtask.durationDays}天
+          {t("taskDetail.days", { count: subtask.durationDays })}
         </div>
         <div style={{ fontSize: 9, color: T.muted, marginTop: 2, fontFamily: "var(--font-geist-mono), monospace" }}>
           {dateLabel}
@@ -304,6 +306,7 @@ function SubtaskItem({
 
 // ─── 资源汇总区 ──────────────────────────────────────────────────────────
 function ResourcePanel({ subtasks }: { subtasks: Subtask[] }) {
+  const { t } = useTranslation();
   // 收集所有子任务的资源，去重
   const seen = new Set<string>();
   const allResources: Resource[] = [];
@@ -320,22 +323,20 @@ function ResourcePanel({ subtasks }: { subtasks: Subtask[] }) {
   if (allResources.length === 0) return null;
 
   const verified = allResources.filter(r => r.trust_level === "verified");
-  const searchOnly = allResources.filter(r => r.trust_level !== "verified");
-
   return (
     <div style={{ background: T.surface, border: `1px solid ${T.line}`, borderRadius: 14, overflow: "hidden" }}>
       {/* 标题 */}
       <div style={{ padding: "14px 18px 10px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${T.line}` }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: T.ink, letterSpacing: "-0.02em" }}>
-          📚 学习资源
+          {t("taskDetail.resourcesTitle")}
         </span>
-        <span style={{ fontSize: 10, color: T.muted }}>共 {allResources.length} 个</span>
+        <span style={{ fontSize: 10, color: T.muted }}>{t("taskDetail.resourceTotal", { count: allResources.length })}</span>
         {verified.length > 0 && (
           <span style={{
             fontSize: 9, fontWeight: 700, color: T.green,
             background: "rgba(47,93,80,0.1)", border: "1px solid rgba(47,93,80,0.2)",
             borderRadius: 4, padding: "1px 6px",
-          }}>✓ {verified.length} 已验证</span>
+          }}>{t("taskDetail.verifiedCount", { count: verified.length })}</span>
         )}
       </div>
 
@@ -364,7 +365,7 @@ function ResourcePanel({ subtasks }: { subtasks: Subtask[] }) {
               onClick={(clickable && !isDead) ? () => {
                 const target = r.resolved_url ?? r.url;
                 if (target) openExternalUrl(target);
-                else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener");
+                else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener,noreferrer");
               } : undefined}
               style={{
                 display: "flex", alignItems: "flex-start", gap: 10,
@@ -392,7 +393,7 @@ function ResourcePanel({ subtasks }: { subtasks: Subtask[] }) {
                     border: `1px solid ${accentColor}28`,
                     borderRadius: 4, padding: "1px 5px",
                   }}>
-                    {isVerified ? "✓ 已验证" : "🔎 搜索"}
+                    {isVerified ? t("taskDetail.trustVerified") : t("taskDetail.trustSearch")}
                   </span>
                 </div>
 
@@ -444,11 +445,11 @@ function ResourcePanel({ subtasks }: { subtasks: Subtask[] }) {
                   </div>
                 )}
                 {isDead && (
-                  <div style={{ fontSize: 10, color: "#C0392B", marginTop: 2 }}>⚠ 该链接当前不可访问</div>
+                  <div style={{ fontSize: 10, color: "#C0392B", marginTop: 2 }}>{t("taskDetail.deadLink")}</div>
                 )}
                 {!r.url && r.searchQuery && (
                   <div style={{ fontSize: 10, color: accentColor, marginTop: 2, fontFamily: "var(--font-geist-mono), monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    搜：{r.searchQuery}
+                    {t("taskDetail.search", { query: r.searchQuery })}
                   </div>
                 )}
               </div>
@@ -463,11 +464,11 @@ function ResourcePanel({ subtasks }: { subtasks: Subtask[] }) {
       <div style={{ padding: "8px 16px 10px", display: "flex", gap: 14, background: T.soft }}>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.green, flexShrink: 0 }} />
-          <span style={{ fontSize: 10, color: T.muted }}>已验证 URL</span>
+          <span style={{ fontSize: 10, color: T.muted }}>{t("taskDetail.legendVerified")}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.orange, flexShrink: 0 }} />
-          <span style={{ fontSize: 10, color: T.muted }}>点击跳转搜索</span>
+          <span style={{ fontSize: 10, color: T.muted }}>{t("taskDetail.legendSearch")}</span>
         </div>
       </div>
     </div>
@@ -498,6 +499,7 @@ interface Props {
 }
 
 export function TaskDetailContent({ task, onToggle }: Props) {
+  const { t } = useTranslation();
   const completedCount = task.subtasks.filter(s => s.completed).length;
   const totalCount = task.subtasks.length;
   const progressPct = totalCount > 0 ? completedCount / totalCount : 0;
@@ -549,18 +551,18 @@ export function TaskDetailContent({ task, onToggle }: Props) {
               marginBottom: 8,
               borderLeft: `2px solid ${T.line}`, paddingLeft: 8,
             }}>
-              "{task.rawInput}"
+              &ldquo;{task.rawInput}&rdquo;
             </div>
           )}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <MetaBadge label={`${task.totalDays} 天计划`} color={T.accent} />
-            <MetaBadge label={`约 ${totalHours.toFixed(0)}h`} color={T.purple} />
+            <MetaBadge label={t("taskDetail.planDays", { count: task.totalDays })} color={T.accent} />
+            <MetaBadge label={t("taskDetail.approxHours", { count: totalHours.toFixed(0) })} color={T.purple} />
             <MetaBadge
-              label={task.status === "done" ? "✓ 已完成" : "进行中"}
+              label={task.status === "done" ? t("taskDetail.statusDone") : t("taskDetail.statusDoing")}
               color={task.status === "done" ? T.green : T.orange}
             />
             <MetaBadge
-              label={new Date(task.createdAt).toLocaleDateString("zh-CN", { month: "short", day: "numeric" }) + " 创建"}
+              label={t("taskDetail.created", { date: new Date(task.createdAt).toLocaleDateString(getResolvedLocale(), { month: "short", day: "numeric" }) })}
               color={T.muted}
             />
           </div>
@@ -572,17 +574,17 @@ export function TaskDetailContent({ task, onToggle }: Props) {
 
       {/* ③ 统计行 */}
       <div style={{ display: "flex", gap: 10 }}>
-        <StatCard value={String(completedCount)} label="已完成" color={T.green} />
-        <StatCard value={String(totalCount - completedCount)} label="待完成" color={T.accent} />
-        <StatCard value={`${task.totalDays}天`} label="计划工期" color={T.purple} />
-        <StatCard value={`${totalHours.toFixed(0)}h`} label="预计学时" color={T.orange} />
+        <StatCard value={String(completedCount)} label={t("taskDetail.statCompleted")} color={T.green} />
+        <StatCard value={String(totalCount - completedCount)} label={t("taskDetail.statPending")} color={T.accent} />
+        <StatCard value={t("taskDetail.days", { count: task.totalDays })} label={t("taskDetail.statPlanDays")} color={T.purple} />
+        <StatCard value={`${totalHours.toFixed(0)}h`} label={t("taskDetail.statHours")} color={T.orange} />
       </div>
 
       {/* ④ 子任务列表 */}
       <div style={{ background: T.surface, border: `1px solid ${T.line}`, borderRadius: 14, overflow: "hidden" }}>
         <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${T.line}`, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>学习步骤</span>
-          <span style={{ fontSize: 10, color: T.muted }}>{totalCount} 个子任务</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{t("taskDetail.stepsTitle")}</span>
+          <span style={{ fontSize: 10, color: T.muted }}>{t("taskDetail.subtaskCount", { count: totalCount })}</span>
           <div style={{ flex: 1 }} />
           {/* 整体进度条 */}
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

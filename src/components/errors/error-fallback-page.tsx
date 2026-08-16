@@ -54,14 +54,14 @@ export function ErrorFallbackPage({ error, reset }: ErrorFallbackPageProps) {
 
         <div className="mt-8 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
           <Button size="lg" className="gap-2" onClick={() => reset()}>
-            <RotateCcw className="size-4" />
+            <RotateCcw className="size-4" strokeWidth={1.5} />
             {t("errors.generic.tryAgain")}
           </Button>
           <Link
             href="/"
             className={cn(buttonVariants({ variant: "outline", size: "lg" }), "gap-2")}
           >
-            <Home className="size-4" />
+            <Home className="size-4" strokeWidth={1.5} />
             {t("errors.generic.backHome")}
           </Link>
         </div>

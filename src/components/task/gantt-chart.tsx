@@ -1,6 +1,7 @@
 "use client";
 
 import type { Subtask } from "@/lib/db/schema";
+import { useTranslation } from "react-i18next";
 
 interface GanttChartProps {
   subtasks: Subtask[];
@@ -18,11 +19,12 @@ export function GanttChart({
   collapsible = false,
   defaultOpen = true,
 }: GanttChartProps) {
+  const { t } = useTranslation();
   if (subtasks.length === 0) return null;
   const span = Math.max(totalDays, 1);
 
   const bars = (
-    <div className="flex flex-col gap-[10px]" aria-label="甘特图时间线">
+    <div className="flex flex-col gap-[10px]" aria-label={t("gantt.ariaLabel")}>
       {subtasks.map((s, i) => {
         const leftPct = (s.startDay / span) * 100;
         const widthPct = Math.max((s.durationDays / span) * 100, 4);
@@ -33,7 +35,7 @@ export function GanttChart({
             key={s.id}
             className="relative h-7 rounded-full overflow-hidden"
             style={{ background: "#F1F2EE" }}
-            title={`${s.title} (${s.durationDays}天)`}
+            title={t("gantt.barTitle", { title: s.title, days: s.durationDays })}
           >
             {/* Filled pill segment */}
             <div
@@ -78,7 +80,7 @@ export function GanttChart({
         className="px-[18px] py-4 cursor-pointer font-semibold text-[15px] select-none list-none"
         style={{ WebkitListStyle: "none" } as React.CSSProperties}
       >
-        时间线
+        {t("gantt.timeline")}
       </summary>
       <div className="px-[18px] pb-[18px]">{bars}</div>
     </details>
