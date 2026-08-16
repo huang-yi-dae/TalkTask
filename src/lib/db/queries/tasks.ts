@@ -169,18 +169,10 @@ export async function createSubtasks(
   items: SubtaskInsert[]
 ): Promise<Subtask[]> {
   if (items.length === 0) return [];
-  const rows: Subtask[] = [];
-  // 逐条插入，避免批量 VALUES 在 Neon PgBouncer 下的协议兼容性问题
-  for (const s of items) {
-    const row = {
-      ...s,
-      taskId,
-      id: crypto.randomUUID(),
-      completed: false,
-    };
-    await db.insert(subtasks).values(row);
-    rows.push(row as Subtask);
-  }
+  const rows = await db
+    .insert(subtasks)
+    .values(items.map((s) => ({ ...s, taskId })))
+    .returning();
   return rows;
 }
 
