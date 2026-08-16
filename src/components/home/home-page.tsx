@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { getResolvedLocale } from "@/i18n";
+import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEazo } from "@/lib/eazo-shim";
 import { auth } from "@/lib/eazo-shim";
@@ -9,13 +12,13 @@ import {
   toggleSubtask, updateTaskStatusApi, postponeSubtask, unpostponeSubtask,
 } from "@/lib/api/tasks";
 import type { SubtaskWithTask } from "@/lib/api/tasks";
+import { AchievementPanel, LevelBadge } from "./achievement-panel";
 import { RightPanel, useAnalysisPanel } from "./right-panel";
 import { NewTaskInput } from "./new-task-input";
 import { getSubtaskActualDates } from "./subtask-row";
 import { TimelineCard, TimelineSectionHeader } from "./timeline-card";
 import { SubtaskDetailModal } from "./subtask-detail-modal";
 import { CongratulationsModal, type CongratsData } from "./congrats-modal";
-import { AchievementPanel, LevelBadge } from "./achievement-panel";
 import { request } from "@/lib/api/request";
 import { encourageMessage, crossedMilestone, type Level } from "@/lib/growth";
 import { MilestoneUnlockModal } from "./milestone-unlock-modal";
@@ -35,25 +38,71 @@ const T = {
   error:   "#C0392B",
 } as const;
 
-type TimeFilter = "today" | "tomorrow" | "week" | "all";
+// 空状态入场动画：split & stagger（better-ui 原则5）
+// 子项 opacity + y + blur，spring / bounce:0
+const emptyItemVariants = {
+  hidden: { opacity: 0, y: 10, filter: "blur(4px)" },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { type: "spring" as const, duration: 0.3, bounce: 0 },
+  },
+};
+
+// 列表加载骨架屏（M1）：灰色占位卡，保持布局稳定、减少感知延迟
+function ListSkeleton() {
+  return (
+    <div aria-hidden style={{ display: "flex", flexDirection: "column", gap: 10, padding: "4px 0" }}>
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className="animate-pulse"
+          style={{
+            background: "#FFFFFF", border: "1px solid #E7E7E2", borderRadius: 12,
+            padding: "12px 12px 13px", display: "flex", gap: 9, alignItems: "flex-start",
+          }}
+        >
+          <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#EDEDEA", flexShrink: 0, marginTop: 1 }} />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ width: `${70 - i * 8}%`, height: 11, borderRadius: 4, background: "#EDEDEA" }} />
+            <div style={{ width: "42%", height: 9, borderRadius: 4, background: "#F1F2EE" }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type TimeFilter = "today" | "tomorrow" | "week" | "later" | "all";
+
+// ─── 时间轴分组类型 ────────────────────────────────────────────────────
+interface TimelineSection {
+  key: TimeFilter;
+  label: string;
+  sublabel: string;
+  accentColor: string;
+  rows: SubtaskWithTask[];
+}
 
 // ─── Main Dashboard ───────────────────────────────────────────────────
 
 export function HomePage() {
+  const { t, i18n } = useTranslation();
   const router = useRouter();
   const user = useEazo((s) => s.auth.user);
   const authLoading = useEazo((s) => s.auth.loading);
 
   const [subtaskRows, setSubtaskRows] = useState<SubtaskWithTask[]>([]);
   const [fetching, setFetching] = useState(false);
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
+  const [loadError, setLoadError] = useState(false);
   const [showInput, setShowInput] = useState(false);
-  const [streakTick, setStreakTick] = useState(0);
   const [detailSubtask, setDetailSubtask] = useState<SubtaskWithTask | null>(null);
   const [congrats, setCongrats] = useState<CongratsData | null>(null);
   const [highlightedSubtaskId, setHighlightedSubtaskId] = useState<string | null>(null);
   // 键盘导航当前选中的单个子任务（Space/↑↓ 的作用目标）
   const [activeSubtaskId, setActiveSubtaskId] = useState<string | null>(null);
+  const [streakTick, setStreakTick] = useState(0);
   // 待确认延迟的子任务（打开确认弹窗）
   const [postponeTarget, setPostponeTarget] = useState<SubtaskWithTask | null>(null);
   // 轻量 Toast 提示（失败提示 / 撤销等）
@@ -78,11 +127,15 @@ export function HomePage() {
 
   const loadSubtasks = useCallback(async () => {
     setFetching(true);
+    setLoadError(false);
     try { setSubtaskRows(await getSubtasksWithTask()); }
+    catch { setLoadError(true); }
     finally { setFetching(false); }
   }, []);
 
   useEffect(() => {
+    // 登出时清空列表，仅在 user 变为空时触发一次，无级联循环
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!user) { setSubtaskRows([]); return; }
     loadSubtasks();
   }, [user, loadSubtasks]);
@@ -96,6 +149,8 @@ export function HomePage() {
   // Refresh left list when analysis completes
   useEffect(() => {
     const done = entries.some((e) => e.stream.phase === "done");
+    // 分析完成后刷新左侧列表；由 phase 变化驱动，非同步级联
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (done && user) loadSubtasks();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries.map((e) => e.stream.phase).join(",")]);
@@ -106,19 +161,19 @@ export function HomePage() {
     setDetailSubtask((prev) => prev?.id === subtaskId ? { ...prev, completed: next } : prev);
     patchSubtaskCompleted(taskId, subtaskId, next);  // 同步右侧 AI 面板
 
-    // 后端持久化：失败则回滚本地状态，避免"假完成"后刷新丢失
+    // 后端持久化：失败则回滚本地状态，避免“假完成”后刷新丢失
     try {
       await toggleSubtask(taskId, subtaskId, next);
     } catch {
       setSubtaskRows((prev) => prev.map((s) => s.id === subtaskId ? { ...s, completed: current } : s));
       setDetailSubtask((prev) => prev?.id === subtaskId ? { ...prev, completed: current } : prev);
       patchSubtaskCompleted(taskId, subtaskId, current);  // 回滚右侧 AI 面板
-      showToast(next ? "标记完成失败，已撤回，请重试" : "取消完成失败，已撤回，请重试");
+      showToast(next ? t("home.toast.markDoneFailed") : t("home.toast.markUndoneFailed"));
       return;
     }
 
     // 仅在成功持久化后才计入 streak 与触发完成庆祝
-    if (next) setStreakTick(t => t + 1);
+    if (next) setStreakTick(n => n + 1);
 
     // 是否整个大任务已完成（决定走庆祝弹窗还是即时微激励）
     let allDone = false;
@@ -134,27 +189,28 @@ export function HomePage() {
       return prev;
     });
 
-    // 方向D+B：即时微激励 & 里程碑解锁 —— 每完成一项就给反馈
+    // 方向D+B：即时微激励 & 里程碑解锁 —— 每完成一项就给反馈（整任务完成时交给庆祝弹窗，跳过操作不弹）
     if (next && !silent && !allDone) {
       try {
         const res = await request("/api/user/stats");
         if (res.ok) {
           const s = await res.json() as { todayCount: number; totalCompleted: number };
           const after = s.totalCompleted;
-          const before = after - 1;
+          const before = after - 1;  // 本次刚完成 1 个
           prevTotalRef.current = after;
           const crossed = crossedMilestone(before, after);
           if (crossed) {
+            // 跨过里程碑：弹解锁弹窗（比普通 Toast 更隆重）
             setMilestone(crossed);
           } else {
             showToast(encourageMessage(s.todayCount, after));
           }
         }
-      } catch { /* 静默失败 */ }
+      } catch { /* 静默失败，不打扰用户 */ }
     }
-  }, [showToast, patchSubtaskCompleted]);
+  }, [showToast, patchSubtaskCompleted, t]);
 
-  // 确认延迟：startDay += 1，乐观更新本地 + 调后端重排；成功后给"已延迟 · 撤销"Toast
+  // 确认延迟：startDay += 1，乐观更新本地 + 调后端重排；成功后给「已延迟 · 撤销」Toast
   const confirmPostpone = useCallback(async (row: SubtaskWithTask) => {
     setPostponeTarget(null);
     // 乐观更新：本地 startDay+1，卡片会随之重新分组到次日
@@ -165,61 +221,57 @@ export function HomePage() {
       // 失败回滚
       setSubtaskRows((prev) => prev.map((s) =>
         s.id === row.id ? { ...s, startDay: s.startDay - 1 } : s));
-      showToast("延迟失败，请重试");
+      showToast(t("home.toast.postponeFailed"));
       return;
     }
-    // 成功：提示去向（避免任务"悄悄挪走"找不到）+ 撤销入口
-    showToast(`已延迟到明天，"${row.title}"移到次日`, "撤销", () => {
+    // 成功：提示去向（避免任务“悄悄挪走”找不到）+ 撤销入口
+    showToast(t("home.toast.postponed", { title: row.title }), t("home.toast.undo"), () => {
       setSubtaskRows((prev) => prev.map((s) =>
         s.id === row.id ? { ...s, startDay: Math.max(0, s.startDay - 1) } : s));
       unpostponeSubtask(row.taskId, row.id).catch(() => {
+        // 撤销失败则回滚回延后态
         setSubtaskRows((prev) => prev.map((s) =>
           s.id === row.id ? { ...s, startDay: s.startDay + 1 } : s));
-        showToast("撤销失败，请重试");
+        showToast(t("home.toast.undoFailed"));
       });
     });
-  }, [showToast]);
+  }, [showToast, t]);
 
-  // 跳过：标记完成，并给"已跳过 · 撤销"Toast
+  // 跳过：标记完成，并给「已跳过 · 撤销」Toast
   const handleSkip = useCallback(async (row: SubtaskWithTask) => {
     if (row.completed) return;
-    await handleToggleSubtask(row.taskId, row.id, false, true);  // silent：不弹微激励，改弹"已跳过"
-    showToast(`已跳过"${row.title}"`, "撤销", () => {
+    await handleToggleSubtask(row.taskId, row.id, false, true);  // silent：不弹微激励，改弹「已跳过」
+    showToast(t("home.toast.skipped", { title: row.title }), t("home.toast.undo"), () => {
       handleToggleSubtask(row.taskId, row.id, true);
     });
-  }, [handleToggleSubtask, showToast]);
+  }, [handleToggleSubtask, showToast, t]);
 
   const handleJumpToSubtask = useCallback((
-    subtaskId: string, taskStartDate: string | null, startDay: number, durationDays: number,
+    subtaskId: string, _taskStartDate: string | null, _startDay: number, _durationDays: number,
   ) => {
-    if (!taskStartDate) return;
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrow = new Date(today.getTime() + 86400000);
-    const base = new Date(taskStartDate);
-    if (isNaN(base.getTime())) return;
-    const baseDay = new Date(base.getFullYear(), base.getMonth(), base.getDate());
-    const s = new Date(baseDay); s.setDate(baseDay.getDate() + startDay);
-    const e = new Date(baseDay); e.setDate(baseDay.getDate() + startDay + durationDays - 1);
-    let target: TimeFilter = "all";
-    if (s <= today && today <= e) target = "today";
-    else if (s <= tomorrow && tomorrow <= e) target = "tomorrow";
-    else { const we = new Date(today.getTime() + 7 * 86400000); if (s <= we && e >= today) target = "week"; }
-    setTimeFilter(target);
+    // 时间轴视图：只需高亮对应卡片，页面已经按日期分组展示
     setHighlightedSubtaskId(subtaskId);
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
     highlightTimer.current = setTimeout(() => setHighlightedSubtaskId(null), 3000);
+    // 尝试滚动到高亮卡片
+    setTimeout(() => {
+      const el = document.getElementById(`subtask-card-${subtaskId}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
   }, []);
 
-  const filteredRows = sortSubtasks(filterSubtasksByTime(subtaskRows, timeFilter));
+  // 时间轴分组
+  const sections = buildTimelineSections(subtaskRows, t, i18n.language);
   // 扁平化的可见顺序（供 ↑↓ 键盘导航）
-  const flatRows = buildTimelineSections(filteredRows).flatMap(s => s.rows);
+  const flatRows = sections.flatMap(s => s.rows);
+  const totalPending = subtaskRows.filter(r => !r.completed).length;
   // 日期在客户端 effect 里格式化，避免 SSR/CSR 时区不一致导致 hydration mismatch
   const [todayStr, setTodayStr] = useState("");
   useEffect(() => {
-    setTodayStr(new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" }));
+    // 客户端挂载后格式化日期，避免 hydration mismatch —— 官方推荐模式，仅执行一次
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTodayStr(new Date().toLocaleDateString(getResolvedLocale(), { year: "numeric", month: "long", day: "numeric" }));
   }, []);
-  const totalPending = subtaskRows.filter(r => !r.completed).length;
 
   // ── 全局键盘快捷键 ──────────────────────────────────────────────
   useEffect(() => {
@@ -246,7 +298,7 @@ export function HomePage() {
           setFocusedId(null);
         }
       } else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !showInput && !detailSubtask && !congrats) {
-        // ↑↓ → 在可见卡片间移动"当前选中"
+        // ↑↓ → 在可见卡片间移动「当前选中」
         if (flatRows.length === 0) return;
         e.preventDefault();
         const idx = flatRows.findIndex(r => r.id === activeSubtaskId);
@@ -281,62 +333,80 @@ export function HomePage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [showInput, detailSubtask, congrats, focusedId, activeSubtaskId, subtaskRows, handleToggleSubtask, setFocusedId]);
+  }, [showInput, detailSubtask, congrats, focusedId, activeSubtaskId, flatRows, subtaskRows, handleToggleSubtask, setFocusedId]);
 
   return (
     <div style={{ background: T.bg, height: "100%", display: "flex", flexDirection: "column", fontFamily: "var(--font-geist), Geist, system-ui, sans-serif" }}>
       <header style={{ background: T.surface, borderBottom: `1px solid ${T.line}`, padding: "0 24px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
           <div>
-            <div style={{ color: T.ink, fontWeight: 700, fontSize: 17, letterSpacing: "-0.04em" }}>拾级</div>
-            <div style={{ color: T.muted, fontSize: 11, marginTop: 1 }}>把目标拆成每天能完成的小步骤</div>
+            <div style={{ color: T.ink, fontWeight: 700, fontSize: 17, letterSpacing: "-0.04em" }}>{t("home.brand")}</div>
+            <div style={{ color: T.muted, fontSize: 11, marginTop: 1 }}>{t("home.tagline")}</div>
           </div>
-          {/* 等级徽章：紧跟副标题右侧，靠左排布 */}
+          {/* 等级徽章：紧跟副标题右侧、隔一段距离，靠左排布（登录且有任务时展示）*/}
           {user && subtaskRows.length > 0 && <LevelBadge refreshTick={streakTick} />}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {!authLoading && !user && <button onClick={() => auth.login().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: `1px solid ${T.line}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}>登录</button>}
-          {user && <button onClick={() => auth.logout().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: "none", cursor: "pointer" }}>退出</button>}
+          {!authLoading && !user && <button onClick={() => auth.login().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: `1px solid ${T.line}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}>{t("common.signIn")}</button>}
+          {user && <button onClick={() => auth.logout().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: "none", cursor: "pointer" }}>{t("common.signOut")}</button>}
           <button onClick={() => { if (!user) { auth.login().catch(() => {}); return; } setShowInput(true); }}
             style={{ background: T.accent, color: "#fff", border: "none", borderRadius: 10, padding: "8px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 400 }}>+</span> 新建任务
+            <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 400 }}>+</span> {t("home.newTask")}
           </button>
         </div>
       </header>
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        {/* ── 左侧：时间轴视图 ── */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", borderRight: `1px solid ${T.line}`, overflow: "hidden" }}>
-          <div style={{ padding: "10px 20px", borderBottom: `1px solid ${T.line}`, display: "flex", alignItems: "center", gap: 8, background: T.surface, flexShrink: 0 }}>
-            <TimeFilterTabs value={timeFilter} onChange={setTimeFilter} />
-            <div style={{ flex: 1 }} />
-            <span style={{ color: T.muted, fontSize: 12, fontFamily: "var(--font-geist-mono), monospace" }}>共 {filteredRows.length} 项</span>
-          </div>
+          {/* 学习日历面板：标题 + 等级 + 数据全部收进同一个框（有任务时展示） */}
+          {user && !fetching && subtaskRows.length > 0 && <AchievementPanel refreshTick={streakTick} pending={totalPending} title={t("home.calendar")} />}
 
-          {/* 学习日历面板：标题 + 等级 + 数据全部收进同一个框 */}
-          {user && !fetching && subtaskRows.length > 0 && <AchievementPanel refreshTick={streakTick} pending={totalPending} title="学习日历" />}
-
-          <div className="canvas-scroll" style={{ flex: 1, overflowY: "auto" }}>
+          {/* 内容区 */}
+          <div className="canvas-scroll" style={{ flex: 1, overflowY: "auto", padding: "16px 14px" }}>
             {authLoading || fetching ? (
-              <div style={{ color: T.muted, fontSize: 13, padding: "40px 24px", textAlign: "center" }}>加载中…</div>
-            ) : !user ? (
-              <div style={{ color: T.muted, fontSize: 13, padding: "60px 24px", textAlign: "center" }}>
-                <div style={{ marginBottom: 12 }}>登录后可查看和管理任务</div>
-                <button onClick={() => auth.login().catch(() => {})} style={{ background: T.accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 13, cursor: "pointer" }}>登录</button>
-              </div>
-            ) : filteredRows.length === 0 ? (
-              <div style={{ padding: "48px 16px 40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-                {/* 图示 */}
-                <div style={{ fontSize: 52, lineHeight: 1 }}>📚</div>
+              <ListSkeleton />
+            ) : loadError ? (
+              <div style={{ padding: "60px 16px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+                <div style={{ fontSize: 40, lineHeight: 1 }}>⚠️</div>
                 <div>
-                  <div style={{ color: T.ink, fontWeight: 700, fontSize: 16, marginBottom: 6, letterSpacing: "-0.03em" }}>还没有学习任务</div>
-                  <div style={{ color: T.muted, fontSize: 13 }}>选一个方向，AI 帮你拆解成可执行的子任务</div>
+                  <div style={{ color: T.ink, fontWeight: 700, fontSize: 15, marginBottom: 4, letterSpacing: "-0.02em" }}>{t("home.loadError.title")}</div>
+                  <div style={{ color: T.muted, fontSize: 13 }}>{t("home.loadError.desc")}</div>
                 </div>
+                <button
+                  onClick={() => loadSubtasks()}
+                  style={{ background: T.accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 22px", fontSize: 13, fontWeight: 500, cursor: "pointer", transition: "background-color 0.15s ease-out, scale 0.12s ease-out" }}
+                  onMouseDown={e => { (e.currentTarget as HTMLButtonElement).style.scale = "0.96"; }}
+                  onMouseUp={e => { (e.currentTarget as HTMLButtonElement).style.scale = "1"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.scale = "1"; }}
+                >
+                  {t("home.loadError.retry")}
+                </button>
+              </div>
+            ) : !user ? (
+              <div style={{ color: T.muted, fontSize: 13, padding: "60px 10px", textAlign: "center" }}>
+                <div style={{ marginBottom: 12 }}>{t("home.signedOut.prompt")}</div>
+                <button onClick={() => auth.login().catch(() => {})} style={{ background: T.accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 13, cursor: "pointer" }}>{t("common.signIn")}</button>
+              </div>
+            ) : sections.every(s => s.rows.length === 0) ? (
+              <motion.div
+                initial="hidden"
+                animate="visible"
+                variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
+                style={{ padding: "48px 16px 40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}
+              >
+                {/* 图示 */}
+                <motion.div variants={emptyItemVariants} style={{ fontSize: 52, lineHeight: 1 }}>📚</motion.div>
+                <motion.div variants={emptyItemVariants}>
+                  <div style={{ color: T.ink, fontWeight: 700, fontSize: 16, marginBottom: 6, letterSpacing: "-0.03em" }}>{t("home.empty.title")}</div>
+                  <div style={{ color: T.muted, fontSize: 13 }}>{t("home.empty.desc")}</div>
+                </motion.div>
                 {/* 示例按钮 */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 260 }}>
+                <motion.div variants={emptyItemVariants} style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 260 }}>
                   {[
-                    { icon: "🐍", label: "从零掌握 Python 基础", value: "从零开始掌握 Python 基础，能写简单脚本" },
-                    { icon: "⚛️", label: "React Hooks 实战",    value: "掌握 React Hooks，能独立开发 Todo 应用" },
-                    { icon: "📐", label: "高考数学冲刺",          value: "高考数学冲刺，重点突破导数与概率" },
+                    { icon: "🐍", label: t("home.samples.python.label"), value: t("home.samples.python.value") },
+                    { icon: "⚛️", label: t("home.samples.react.label"),  value: t("home.samples.react.value") },
+                    { icon: "📐", label: t("home.samples.math.label"),   value: t("home.samples.math.value") },
                   ].map((ex) => (
                     <button
                       key={ex.label}
@@ -347,7 +417,7 @@ export function HomePage() {
                         borderRadius: 10, padding: "10px 14px",
                         fontSize: 13, color: T.ink, fontWeight: 500,
                         cursor: "pointer", textAlign: "left",
-                        transition: "all 0.15s",
+                        transition: "border-color 0.15s ease-out, background-color 0.15s ease-out, scale 0.12s ease-out",
                       }}
                       onMouseEnter={e => {
                         (e.currentTarget as HTMLButtonElement).style.borderColor = T.accent;
@@ -356,7 +426,10 @@ export function HomePage() {
                       onMouseLeave={e => {
                         (e.currentTarget as HTMLButtonElement).style.borderColor = T.line;
                         (e.currentTarget as HTMLButtonElement).style.background = T.surface;
+                        (e.currentTarget as HTMLButtonElement).style.scale = "1";
                       }}
+                      onMouseDown={e => { (e.currentTarget as HTMLButtonElement).style.scale = "0.97"; }}
+                      onMouseUp={e => { (e.currentTarget as HTMLButtonElement).style.scale = "1"; }}
                     >
                       <span style={{ fontSize: 18 }}>{ex.icon}</span>
                       <span style={{ flex: 1 }}>{ex.label}</span>
@@ -367,18 +440,18 @@ export function HomePage() {
                     onClick={() => { if (!user) { auth.login().catch(() => {}); return; } setShowInput(true); }}
                     style={{ border: `1px dashed ${T.line}`, borderRadius: 10, padding: "9px 14px", fontSize: 13, color: T.muted, cursor: "pointer", background: "transparent" }}
                   >
-                    + 自定义目标…
+                    {t("home.empty.custom")}
                   </button>
-                </div>
-              </div>
+                </motion.div>
+              </motion.div>
             ) : (
-              buildTimelineSections(filteredRows).filter((s) => s.rows.length > 0).map((section) => (
+              sections.filter(s => s.rows.length > 0).map((section) => (
                 <div key={section.key} style={{ marginBottom: 28 }}>
                   <TimelineSectionHeader
                     label={section.label}
                     sublabel={section.sublabel}
                     accentColor={section.accentColor}
-                    pendingCount={section.rows.filter((r) => !r.completed).length}
+                    pendingCount={section.rows.filter(r => !r.completed).length}
                   />
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {section.rows.map((row) => (
@@ -408,12 +481,12 @@ export function HomePage() {
       </div>
 
       <footer className="kbd-footer" style={{ background: T.surface, borderTop: `1px solid ${T.line}`, padding: "7px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-        <span style={{ color: T.muted, fontSize: 12 }}>今天：{todayStr}</span>
+        <span style={{ color: T.muted, fontSize: 12 }}>{t("home.footer.today", { date: todayStr })}</span>
         <span style={{ color: T.muted, fontSize: 11, display: "flex", gap: 12 }}>
-          <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>N</kbd> 新建</span>
-          <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>↑↓</kbd> 选择</span>
-          <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>Space</kbd> 完成选中</span>
-          <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>Esc</kbd> 关闭</span>
+          <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>N</kbd> {t("home.footer.kbdNew")}</span>
+          <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>↑↓</kbd> {t("home.footer.kbdSelect")}</span>
+          <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>Space</kbd> {t("home.footer.kbdComplete")}</span>
+          <span><kbd style={{ background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 10 }}>Esc</kbd> {t("home.footer.kbdClose")}</span>
         </span>
       </footer>
 
@@ -427,8 +500,13 @@ export function HomePage() {
       {/* 延迟确认弹窗 */}
       {postponeTarget && (
         <>
-          <div onClick={() => setPostponeTarget(null)} style={{ position: "fixed", inset: 0, background: "rgba(17,17,17,0.25)", zIndex: 300, backdropFilter: "blur(2px)" }} />
-          <div style={{
+          <div aria-hidden onClick={() => setPostponeTarget(null)} style={{ position: "fixed", inset: 0, background: "rgba(17,17,17,0.25)", zIndex: 300, backdropFilter: "blur(2px)" }} />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("home.postpone.ariaLabel")}
+            onKeyDown={(e) => { if (e.key === "Escape") setPostponeTarget(null); }}
+            style={{
             position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
             background: T.surface, border: `1px solid ${T.line}`, borderRadius: 16,
             padding: "22px 22px 18px", width: "min(360px, 90vw)", zIndex: 301,
@@ -437,22 +515,22 @@ export function HomePage() {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: 26 }}>⏭</span>
               <div>
-                <div style={{ color: T.ink, fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em" }}>延迟一天</div>
-                <div style={{ color: T.muted, fontSize: 12, marginTop: 2 }}>排期将顺延，其它任务不受影响</div>
+                <div style={{ color: T.ink, fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em" }}>{t("home.postpone.title")}</div>
+                <div style={{ color: T.muted, fontSize: 12, marginTop: 2 }}>{t("home.postpone.desc")}</div>
               </div>
             </div>
             <div style={{ background: T.soft, borderRadius: 10, padding: "10px 12px", color: T.ink, fontSize: 13, lineHeight: 1.5 }}>
-              确定把"<span style={{ fontWeight: 600 }}>{postponeTarget.title}</span>"往后延迟一天吗？
+              {t("home.postpone.confirmText", { title: postponeTarget.title })}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 onClick={() => confirmPostpone(postponeTarget)}
                 style={{ flex: 1, background: T.accent, color: "#fff", border: "none", borderRadius: 10, padding: "10px 0", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-              >确定延迟</button>
+              >{t("home.postpone.confirm")}</button>
               <button
                 onClick={() => setPostponeTarget(null)}
                 style={{ background: T.soft, color: T.muted, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 16px", fontSize: 13, cursor: "pointer" }}
-              >取消</button>
+              >{t("home.postpone.cancel")}</button>
             </div>
           </div>
         </>
@@ -466,6 +544,7 @@ export function HomePage() {
           borderRadius: 12, padding: "11px 16px", fontSize: 13,
           display: "flex", alignItems: "center", gap: 14,
           boxShadow: "0 8px 30px rgba(17,17,17,0.25)", maxWidth: "min(440px, 92vw)",
+          animation: "logReveal 0.25s ease both",
         }}>
           <span style={{ lineHeight: 1.4 }}>{toast.msg}</span>
           {toast.actionLabel && toast.onAction && (
@@ -481,29 +560,24 @@ export function HomePage() {
 }
 
 // ─── 时间轴分段构建 ───────────────────────────────────────────────────
-interface TimelineSection {
-  key: string;
-  label: string;
-  sublabel: string;
-  accentColor: string;
-  rows: SubtaskWithTask[];
-}
-
 /**
  * 将所有子任务按时间段分为 4 组：
- *   今天 / 明天 / 本周（后 7 天）/ 更晚
+ *   今天 / 明天 / 本周（后 7 天）/ 更早 or 更晚
  * 每组内：未完成在前（按 sortOrder），已完成在后
- * 移植自 mytask（huang-yi-dae/MyTask）fresh-start 分支，适配 talkTask 的 eazo-shim。
  */
-function buildTimelineSections(rows: SubtaskWithTask[]): TimelineSection[] {
-  const now = new Date();
+function buildTimelineSections(
+  rows: SubtaskWithTask[],
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  locale: string,
+): TimelineSection[] {
+  const now   = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const tomorrow = new Date(today.getTime() + 86400000);
-  const weekEnd = new Date(today.getTime() + 7 * 86400000);
+  const weekEnd  = new Date(today.getTime() + 7 * 86400000);
 
-  const fmtDate = (d: Date) => d.toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short" });
+  const fmtDate = (d: Date) => d.toLocaleDateString(locale, { month: "long", day: "numeric", weekday: "short" });
   const fmtRange = (s: Date, e: Date) =>
-    `${s.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })} — ${e.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}`;
+    `${s.toLocaleDateString(locale, { month: "numeric", day: "numeric" })} — ${e.toLocaleDateString(locale, { month: "numeric", day: "numeric" })}`;
 
   const buckets: Record<string, SubtaskWithTask[]> = {
     today: [], tomorrow: [], week: [], later: [],
@@ -512,6 +586,7 @@ function buildTimelineSections(rows: SubtaskWithTask[]): TimelineSection[] {
   for (const r of rows) {
     const dates = getSubtaskActualDates(r);
     if (!dates) {
+      // 没有排期 → 放到今天
       buckets.today.push(r);
       continue;
     }
@@ -533,12 +608,33 @@ function buildTimelineSections(rows: SubtaskWithTask[]): TimelineSection[] {
     [...arr].sort((a, b) => a.sortOrder - b.sortOrder);
 
   return [
-    { key: "today", label: "今天", sublabel: fmtDate(today), accentColor: "#3B7AFF", rows: sort(buckets.today) },
-    { key: "tomorrow", label: "明天", sublabel: fmtDate(tomorrow), accentColor: "#E07B2A", rows: sort(buckets.tomorrow) },
-    { key: "week", label: "本周", sublabel: fmtRange(new Date(today.getTime() + 2 * 86400000), weekEnd), accentColor: "#2F5D50", rows: sort(buckets.week) },
-    { key: "later", label: "更晚", sublabel: (() => {
+    {
+      key: "today",
+      label: t("home.timeline.today"),
+      sublabel: fmtDate(today),
+      accentColor: "#3B7AFF",
+      rows: sort(buckets.today),
+    },
+    {
+      key: "tomorrow",
+      label: t("home.timeline.tomorrow"),
+      sublabel: fmtDate(tomorrow),
+      accentColor: "#E07B2A",
+      rows: sort(buckets.tomorrow),
+    },
+    {
+      key: "week",
+      label: t("home.timeline.week"),
+      sublabel: fmtRange(new Date(today.getTime() + 2 * 86400000), weekEnd),
+      accentColor: "#2F5D50",
+      rows: sort(buckets.week),
+    },
+    {
+      key: "later",
+      label: t("home.timeline.later"),
+      sublabel: (() => {
         const laterRows = sort(buckets.later);
-        if (laterRows.length === 0) return "7 天之后";
+        if (laterRows.length === 0) return t("home.timeline.afterSevenDays");
         // 从所有 later 行里找最早和最晚的实际日期
         let minDate: Date | null = null;
         let maxDate: Date | null = null;
@@ -548,77 +644,15 @@ function buildTimelineSections(rows: SubtaskWithTask[]): TimelineSection[] {
           if (!minDate || d.start < minDate) minDate = d.start;
           if (!maxDate || d.end > maxDate) maxDate = d.end;
         }
-        if (!minDate || !maxDate) return "7 天之后";
+        if (!minDate || !maxDate) return t("home.timeline.afterSevenDays");
         const diffDays = Math.round((minDate.getTime() - today.getTime()) / 86400000);
-        const dayHint = diffDays > 0 ? `（${diffDays} 天后开始）` : "";
+        const dayHint = diffDays > 0 ? t("home.timeline.startsInDays", { days: diffDays }) : "";
         return `${fmtRange(minDate, maxDate)}${dayHint}`;
-      })(), accentColor: "#94a3b8", rows: sort(buckets.later) },
+      })(),
+      accentColor: "#94a3b8",
+      rows: sort(buckets.later),
+    },
   ];
 }
-
-// ─── Time Filter Tabs ─────────────────────────────────────────────────
-
-function TimeFilterTabs({ value, onChange }: { value: TimeFilter; onChange: (v: TimeFilter) => void }) {
-  const tabs: { key: TimeFilter; label: string }[] = [
-    { key: "today", label: "今天" },
-    { key: "tomorrow", label: "明天" },
-    { key: "week", label: "未来 7 天" },
-    { key: "all", label: "全部" },
-  ];
-  return (
-    <div style={{ display: "flex", gap: 2, background: T.soft, borderRadius: 8, padding: 3 }}>
-      {tabs.map((t) => (
-        <button
-          key={t.key}
-          onClick={() => onChange(t.key)}
-          style={{
-            padding: "5px 12px", borderRadius: 6, border: "none", fontSize: 13, cursor: "pointer",
-            background: value === t.key ? T.surface : "transparent",
-            color: value === t.key ? T.ink : T.muted,
-            fontWeight: value === t.key ? 600 : 400,
-            boxShadow: value === t.key ? "0 1px 4px rgba(17,17,17,0.07)" : "none",
-            transition: "all 0.15s", letterSpacing: "-0.01em",
-          }}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────
-
-function sortSubtasks(rows: SubtaskWithTask[]): SubtaskWithTask[] {
-  return [...rows].sort((a, b) => {
-    if (a.completed !== b.completed) return a.completed ? 1 : -1;
-    return a.sortOrder - b.sortOrder;
-  });
-}
-
-function filterSubtasksByTime(rows: SubtaskWithTask[], filter: TimeFilter): SubtaskWithTask[] {
-  if (filter === "all") return rows;
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrow = new Date(today.getTime() + 86400000);
-  const weekEnd = new Date(today.getTime() + 7 * 86400000);
-  return rows.filter((r) => {
-    const dates = getSubtaskActualDates(r);
-    if (!dates) {
-      const d = new Date(r.taskCreatedAt);
-      const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      if (filter === "today")    return day.getTime() === today.getTime();
-      if (filter === "tomorrow") return day.getTime() === tomorrow.getTime();
-      if (filter === "week")     return day >= today && day <= weekEnd;
-      return true;
-    }
-    const { start, end } = dates;
-    if (filter === "today")    return start <= today    && today    <= end;
-    if (filter === "tomorrow") return start <= tomorrow && tomorrow <= end;
-    if (filter === "week")     return start <= weekEnd  && end      >= today;
-    return true;
-  });
-}
-
 
 

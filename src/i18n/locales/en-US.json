@@ -65,5 +65,70 @@
       "desc": "Start developing and iterate in real time.",
       "command": "bun dev"
     }
+  },
+  "home": {
+    "brand": "Steps",
+    "tagline": "Break goals into small steps you can finish each day",
+    "newTask": "New task",
+    "calendar": "Study calendar",
+    "loadError": {
+      "title": "Failed to load",
+      "desc": "Something went wrong with the network or service",
+      "retry": "Retry"
+    },
+    "signedOut": {
+      "prompt": "Sign in to view and manage your tasks"
+    },
+    "empty": {
+      "title": "No study tasks yet",
+      "desc": "Pick a direction and AI will break it into actionable subtasks",
+      "custom": "+ Custom goal…"
+    },
+    "samples": {
+      "python": {
+        "label": "Master Python basics from scratch",
+        "value": "Master Python basics from scratch and write simple scripts"
+      },
+      "react": {
+        "label": "React Hooks in practice",
+        "value": "Master React Hooks and build a Todo app on your own"
+      },
+      "math": {
+        "label": "Math exam sprint",
+        "value": "Math exam sprint, focusing on derivatives and probability"
+      }
+    },
+    "footer": {
+      "today": "Today: {{date}}",
+      "kbdNew": "New",
+      "kbdSelect": "Select",
+      "kbdComplete": "Complete selected",
+      "kbdClose": "Close"
+    },
+    "postpone": {
+      "ariaLabel": "Postpone confirmation",
+      "title": "Postpone one day",
+      "desc": "The schedule will shift; other tasks are unaffected",
+      "confirmText": "Postpone “{{title}}” by one day?",
+      "confirm": "Postpone",
+      "cancel": "Cancel"
+    },
+    "toast": {
+      "markDoneFailed": "Failed to mark complete, reverted. Please retry",
+      "markUndoneFailed": "Failed to unmark, reverted. Please retry",
+      "postponeFailed": "Failed to postpone, please retry",
+      "postponed": "Postponed to tomorrow, “{{title}}” moved to the next day",
+      "undoFailed": "Failed to undo, please retry",
+      "skipped": "Skipped “{{title}}”",
+      "undo": "Undo"
+    },
+    "timeline": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "week": "This week",
+      "later": "Later",
+      "afterSevenDays": "After 7 days",
+      "startsInDays": "(starts in {{days}} days)"
+    }
   }
 }
