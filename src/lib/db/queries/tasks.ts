@@ -202,18 +202,21 @@ export async function toggleSubtask(
 /**
  * 将单个子任务往后延迟一天：startDay += 1。
  * 用于用户觉得当天排不下、想顺延的场景。返回更新后的 startDay。
+ * 若子任务不属于该 taskId（越权尝试），返回 null 且不做任何修改。
  */
-export async function postponeSubtask(id: string, delta = 1): Promise<number> {
+export async function postponeSubtask(id: string, taskId: string, delta = 1): Promise<number | null> {
   const rows = await db
     .select({ startDay: subtasks.startDay })
     .from(subtasks)
-    .where(eq(subtasks.id, id))
+    // 约束 taskId：越权的 subtaskId 查不到，直接返回 null
+    .where(and(eq(subtasks.id, id), eq(subtasks.taskId, taskId)))
     .limit(1);
-  const current = rows[0]?.startDay ?? 0;
+  if (rows.length === 0) return null;
+  const current = rows[0].startDay ?? 0;
   const next = Math.max(0, current + delta);
   await db.update(subtasks)
     .set({ startDay: next })
-    .where(eq(subtasks.id, id));
+    .where(and(eq(subtasks.id, id), eq(subtasks.taskId, taskId)));
   return next;
 }
 
