@@ -67,7 +67,14 @@
     }
   },
   "timelineCard": {
-    "bloom": { "1": "记忆", "2": "理解", "3": "应用", "4": "分析", "5": "评估", "6": "创造" },
+    "bloom": {
+      "1": "记忆",
+      "2": "理解",
+      "3": "应用",
+      "4": "分析",
+      "5": "评估",
+      "6": "创造"
+    },
     "pendingCount": "{{count}} 项待完成",
     "viewDetail": "{{title}}{{done}}，查看详情",
     "completedMark": "（已完成）",
@@ -80,5 +87,70 @@
     "postponeTitle": "延迟一天（顺延排期）",
     "skipAria": "跳过此任务",
     "skipTitle": "跳过此任务（标记为已完成，无需执行）"
+  },
+  "home": {
+    "brand": "拾级",
+    "tagline": "把目标拆成每天能完成的小步骤",
+    "newTask": "新建任务",
+    "calendar": "学习日历",
+    "loadError": {
+      "title": "加载失败",
+      "desc": "网络或服务出了点问题",
+      "retry": "重试"
+    },
+    "signedOut": {
+      "prompt": "登录后可查看和管理任务"
+    },
+    "empty": {
+      "title": "还没有学习任务",
+      "desc": "选一个方向，AI 帮你拆解成可执行的子任务",
+      "custom": "+ 自定义目标…"
+    },
+    "samples": {
+      "python": {
+        "label": "从零掌握 Python 基础",
+        "value": "从零开始掌握 Python 基础，能写简单脚本"
+      },
+      "react": {
+        "label": "React Hooks 实战",
+        "value": "掌握 React Hooks，能独立开发 Todo 应用"
+      },
+      "math": {
+        "label": "高考数学冲刺",
+        "value": "高考数学冲刺，重点突破导数与概率"
+      }
+    },
+    "footer": {
+      "today": "今天：{{date}}",
+      "kbdNew": "新建",
+      "kbdSelect": "选择",
+      "kbdComplete": "完成选中",
+      "kbdClose": "关闭"
+    },
+    "postpone": {
+      "ariaLabel": "延迟确认",
+      "title": "延迟一天",
+      "desc": "排期将顺延，其它任务不受影响",
+      "confirmText": "确定把「{{title}}」往后延迟一天吗？",
+      "confirm": "确定延迟",
+      "cancel": "取消"
+    },
+    "toast": {
+      "markDoneFailed": "标记完成失败，已撤回，请重试",
+      "markUndoneFailed": "取消完成失败，已撤回，请重试",
+      "postponeFailed": "延迟失败，请重试",
+      "postponed": "已延迟到明天，「{{title}}」移到次日",
+      "undoFailed": "撤销失败，请重试",
+      "skipped": "已跳过「{{title}}」",
+      "undo": "撤销"
+    },
+    "timeline": {
+      "today": "今天",
+      "tomorrow": "明天",
+      "week": "本周",
+      "later": "更晚",
+      "afterSevenDays": "7 天之后",
+      "startsInDays": "（{{days}} 天后开始）"
+    }
   }
 }
