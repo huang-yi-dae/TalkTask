@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import type { Level } from "@/lib/growth";
 
 const T = {
@@ -9,10 +10,11 @@ const T = {
 
 /** 方向B：里程碑等级解锁弹窗 */
 export function MilestoneUnlockModal({ level, onClose }: { level: Level; onClose: () => void }) {
+  const { t } = useTranslation();
   // 自动关闭
   useEffect(() => {
-    const t = setTimeout(onClose, 4200);
-    return () => clearTimeout(t);
+    const timer = setTimeout(onClose, 4200);
+    return () => clearTimeout(timer);
   }, [onClose]);
 
   return (
@@ -23,7 +25,7 @@ export function MilestoneUnlockModal({ level, onClose }: { level: Level; onClose
       />
       <div
         role="dialog"
-        aria-label="解锁新等级"
+        aria-label={t("milestone.ariaLabel")}
         className="milestone-pop"
         style={{
           position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
@@ -44,17 +46,17 @@ export function MilestoneUnlockModal({ level, onClose }: { level: Level; onClose
             background: "rgba(255,255,255,0.18)", border: "2px solid rgba(255,255,255,0.5)",
             display: "flex", alignItems: "center", justifyContent: "center", fontSize: 38,
           }}>{level.icon}</div>
-          <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.9, letterSpacing: "0.08em" }}>解锁新等级</div>
-          <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", marginTop: 3 }}>Lv · {level.name}</div>
+          <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.9, letterSpacing: "0.08em" }}>{t("milestone.unlockTitle")}</div>
+          <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", marginTop: 3 }}>{t("milestone.level", { name: level.name })}</div>
         </div>
 
         {/* 说明 */}
         <div style={{ padding: "16px 22px 20px" }}>
           <div style={{ color: T.ink, fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-            累计完成 {level.threshold} 个学习步骤 🎉
+            {t("milestone.reached", { threshold: level.threshold })}
           </div>
           <div style={{ color: T.muted, fontSize: 12.5, lineHeight: 1.6 }}>
-            你的坚持正在积累成看得见的成长，继续保持这个节奏！
+            {t("milestone.encourage")}
           </div>
           <button
             onClick={onClose}
@@ -65,7 +67,7 @@ export function MilestoneUnlockModal({ level, onClose }: { level: Level; onClose
               cursor: "pointer",
             }}
           >
-            继续加油
+            {t("milestone.keepGoing")}
           </button>
         </div>
       </div>

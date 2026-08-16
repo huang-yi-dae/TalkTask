@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { SubtaskWithTask } from "@/lib/api/tasks";
 import { getSubtaskDateRange } from "./subtask-row";
 import { openExternalUrl } from "@/lib/safe-url";
@@ -25,7 +26,6 @@ const TRUST_CONFIG = {
     bg: "rgba(47,93,80,0.05)",
     badgeBg: "rgba(47,93,80,0.12)",
     badgeColor: "#2F5D50",
-    badgeText: "✓ 已验证",
     arrowColor: "#2F5D50",
   },
   search_only: {
@@ -33,7 +33,6 @@ const TRUST_CONFIG = {
     bg: "rgba(224,123,42,0.04)",
     badgeBg: "rgba(224,123,42,0.12)",
     badgeColor: "#E07B2A",
-    badgeText: "🔎 搜索",
     arrowColor: "#E07B2A",
   },
 } as const;
@@ -46,6 +45,7 @@ interface Props {
 }
 
 export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props) {
+  const { t } = useTranslation();
   const dateRange = getSubtaskDateRange(row);
 
   // 解析资源（兼容旧格式和新 TrustableResource 格式）
@@ -79,22 +79,16 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
   // ── 学习 Prompt：搜索无结果时，供用户复制到外部 AI ──
   const [copied, setCopied] = useState(false);
   const buildLearnPrompt = (): string => {
-    const bloomMap: Record<number, string> = { 1: "记忆", 2: "理解", 3: "应用", 4: "分析", 5: "评估", 6: "创造" };
+    const bloomMap = t("subtaskDetail.prompt.bloom", { returnObjects: true }) as Record<number, string>;
     const lines: string[] = [];
-    lines.push(`我正在学习「${row.taskTitle}」，当前要掌握的具体环节是：${row.title}`);
-    if (row.description) lines.push(`\n这个环节的说明：${row.description}`);
-    if (row.topic) lines.push(`所属主题领域：${row.topic}`);
+    lines.push(t("subtaskDetail.prompt.intro", { task: row.taskTitle, title: row.title }));
+    if (row.description) lines.push(t("subtaskDetail.prompt.description", { desc: row.description }));
+    if (row.topic) lines.push(t("subtaskDetail.prompt.topic", { topic: row.topic }));
     if (row.bloomLevel && bloomMap[row.bloomLevel]) {
-      lines.push(`期望达到的认知层级：${bloomMap[row.bloomLevel]}（Bloom L${row.bloomLevel}）`);
+      lines.push(t("subtaskDetail.prompt.bloomLine", { level: bloomMap[row.bloomLevel], n: row.bloomLevel }));
     }
-    if (keywords.length) lines.push(`关键概念：${keywords.join("、")}`);
-    lines.push(
-      `\n请作为该领域的资深老师，为我系统讲解这个环节。要求：`,
-      `1. 用通俗的语言讲清核心概念与原理；`,
-      `2. 给出 1-2 个贴近实际的例子；`,
-      `3. 指出常见误区或易错点；`,
-      `4. 最后给我 2-3 道可自测的练习题（附参考思路）。`,
-    );
+    if (keywords.length) lines.push(t("subtaskDetail.prompt.keywords", { list: keywords.join(t("subtaskDetail.prompt.keywordSep")) }));
+    lines.push(t("subtaskDetail.prompt.instruction"));
     return lines.join("\n");
   };
 
@@ -141,18 +135,18 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
 
         {/* Attributes strip */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {row.topic && <AttrPill icon="🏷" label={`主题：${row.topic}`} color={T.accent} />}
-          {row.urgency && <AttrPill icon="⚡" label={`紧急度 ${row.urgency}/5`} color="#f97316" />}
-          {row.importance && <AttrPill icon="★" label={`重要度 ${row.importance}/5`} color={T.purple} />}
+          {row.topic && <AttrPill icon="🏷" label={t("subtaskDetail.topic", { topic: row.topic })} color={T.accent} />}
+          {row.urgency && <AttrPill icon="⚡" label={t("subtaskDetail.urgency", { value: row.urgency })} color="#f97316" />}
+          {row.importance && <AttrPill icon="★" label={t("subtaskDetail.importance", { value: row.importance })} color={T.purple} />}
           {keywords.slice(0, 3).map((k, i) => <AttrPill key={i} icon="🔑" label={k} color={T.orange} />)}
-          <MetaTag label="工期" value={`${row.durationDays} 天`} />
-          {dateRange && <MetaTag label="日期" value={dateRange} />}
-          <MetaTag label="状态" value={row.completed ? "已完成" : "进行中"} color={row.completed ? T.green : T.accent} />
+          <MetaTag label={t("subtaskDetail.durationLabel")} value={t("subtaskDetail.durationValue", { count: row.durationDays })} />
+          {dateRange && <MetaTag label={t("subtaskDetail.dateLabel")} value={dateRange} />}
+          <MetaTag label={t("subtaskDetail.statusLabel")} value={row.completed ? t("subtaskDetail.statusDone") : t("subtaskDetail.statusDoing")} color={row.completed ? T.green : T.accent} />
         </div>
 
         {/* Description */}
         <div style={{ background: T.soft, borderRadius: 10, padding: "12px 14px", color: row.description ? T.ink : T.muted, fontSize: 13, lineHeight: 1.65 }}>
-          {row.description || "暂无详细说明"}
+          {row.description || t("subtaskDetail.noDescription")}
         </div>
 
         {/* AI 学习 Prompt：搜索无验证资源时作为主要学习入口，有资源时作为补充 */}
@@ -164,11 +158,11 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
             <span style={{ fontSize: 15 }}>🤖</span>
             <span style={{ color: T.ink, fontSize: 12, fontWeight: 700, letterSpacing: "-0.01em" }}>
-              {hasVerified ? "让 AI 帮你讲解" : "没有现成资源？让 AI 讲给你听"}
+              {hasVerified ? t("subtaskDetail.aiTitleWithRes") : t("subtaskDetail.aiTitleNoRes")}
             </span>
           </div>
           <div style={{ color: T.muted, fontSize: 11, lineHeight: 1.5, marginBottom: 9 }}>
-            一键复制为这个环节量身生成的学习提示词，粘贴到 ChatGPT / DeepSeek / 豆包等任意 AI 即可开始学习。
+            {t("subtaskDetail.aiDesc")}
           </div>
           <button
             onClick={handleCopyPrompt}
@@ -181,7 +175,7 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
               transition: "background 0.2s",
             }}
           >
-            {copied ? "✓ 已复制，去 AI 粘贴吧" : "📋 复制学习 Prompt"}
+            {copied ? t("subtaskDetail.copied") : t("subtaskDetail.copyPrompt")}
           </button>
         </div>
 
@@ -190,15 +184,15 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             {/* 资源标题 + 可信度说明 */}
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <span style={{ color: T.muted, fontSize: 11, fontWeight: 600, letterSpacing: "0.03em" }}>📚 推荐资源</span>
+              <span style={{ color: T.muted, fontSize: 11, fontWeight: 600, letterSpacing: "0.03em" }}>{t("subtaskDetail.recommendedRes")}</span>
               {hasVerified && (
                 <span style={{ fontSize: 9, fontWeight: 600, color: T.green, background: "rgba(47,93,80,0.1)", border: "1px solid rgba(47,93,80,0.2)", borderRadius: 4, padding: "1px 6px" }}>
-                  {verifiedCount} 个已验证 URL
+                  {t("subtaskDetail.verifiedCount", { count: verifiedCount })}
                 </span>
               )}
               {!hasVerified && resources.length > 0 && (
                 <span style={{ fontSize: 9, color: T.muted, background: T.soft, border: `1px solid ${T.line}`, borderRadius: 4, padding: "1px 6px" }}>
-                  点击搜索词自动检索
+                  {t("subtaskDetail.clickToSearch")}
                 </span>
               )}
             </div>
@@ -227,7 +221,7 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
                   onClick={clickable && !isDead ? () => {
                     const targetUrl = r.resolved_url ?? r.url;
                     if (targetUrl) openExternalUrl(targetUrl);
-                    else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener");
+                    else if (r.searchQuery) window.open(`https://www.google.com/search?q=${encodeURIComponent(r.searchQuery)}`, "_blank", "noopener,noreferrer");
                   } : undefined}
                   style={{
                     display: "flex", alignItems: "flex-start", gap: 9,
@@ -246,7 +240,7 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
                     <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 3 }}>
                       <span style={{ color: isDead ? T.muted : T.ink, fontSize: 12, fontWeight: 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</span>
                       <span style={{ fontSize: 9, fontWeight: 700, color: cfg.badgeColor, background: cfg.badgeBg, borderRadius: 4, padding: "1px 5px", flexShrink: 0 }}>
-                        {cfg.badgeText}
+                        {t(trustLevel === "verified" ? "subtaskDetail.trustVerified" : "subtaskDetail.trustSearch")}
                       </span>
                     </div>
 
@@ -307,12 +301,12 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
                     )}
                     {isDead && (
                       <div style={{ color: "#C0392B", fontSize: 10, marginTop: 3 }}>
-                        ⚠ 该链接当前不可访问
+                        {t("subtaskDetail.deadLink")}
                       </div>
                     )}
                     {!r.url && r.searchQuery && (
                       <div style={{ color: cfg.arrowColor, fontSize: 10, marginTop: 3, fontFamily: "var(--font-geist-mono), monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        搜：{r.searchQuery}
+                        {t("subtaskDetail.search", { query: r.searchQuery })}
                       </div>
                     )}
                   </div>
@@ -326,17 +320,17 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
             <div style={{ display: "flex", gap: 8, paddingTop: 2, flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: T.green, flexShrink: 0 }} />
-                <span style={{ color: T.muted, fontSize: 10 }}>✓ 可访问 URL</span>
+                <span style={{ color: T.muted, fontSize: 10 }}>{t("subtaskDetail.legendAccessible")}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: T.orange, flexShrink: 0 }} />
-                <span style={{ color: T.muted, fontSize: 10 }}>搜索词 — 点击跳转搜索引擎</span>
+                <span style={{ color: T.muted, fontSize: 10 }}>{t("subtaskDetail.legendSearch")}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <span style={{ fontSize: 9, color: T.muted }}>🏛 官方文档权威分最高（10/10）</span>
+                <span style={{ fontSize: 9, color: T.muted }}>{t("subtaskDetail.legendAuthority")}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <span style={{ fontSize: 9, color: T.muted }}>🟢 近期更新 🟡 1-3年 🔴 3年以上</span>
+                <span style={{ fontSize: 9, color: T.muted }}>{t("subtaskDetail.legendFreshness")}</span>
               </div>
             </div>
           </div>
@@ -361,7 +355,7 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
                 boxShadow: "0 4px 14px rgba(59,122,255,0.25)",
               }}
             >
-              <span>🚀</span> 开始学习
+              <span>🚀</span> {t("subtaskDetail.startLearning")}
             </button>
           );
         })()}
@@ -375,10 +369,10 @@ export function SubtaskDetailModal({ row, onClose, onToggle, onOpenTask }: Props
               borderRadius: 10, padding: "10px 0", fontSize: 13, fontWeight: 600, cursor: "pointer",
             }}
           >
-            {row.completed ? "↩ 取消完成" : "✓ 标记已完成"}
+            {row.completed ? t("subtaskDetail.markUndone") : t("subtaskDetail.markDone")}
           </button>
           <button onClick={onOpenTask} style={{ background: T.soft, color: T.muted, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, cursor: "pointer" }}>
-            大任务 →
+            {t("subtaskDetail.openTask")}
           </button>
         </div>
       </div>

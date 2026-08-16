@@ -4,6 +4,7 @@
 // 弹出时机：某个大任务下所有子任务全部勾选完成
 
 import type { SubtaskWithTask } from "@/lib/api/tasks";
+import { useTranslation } from "react-i18next";
 
 const T = {
   surface: "#FFFFFF", soft: "#F1F2EE", line: "#E7E7E2",
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export function CongratulationsModal({ data, onClose, onLearnMore }: Props) {
+  const { t } = useTranslation();
   return (
     <>
       {/* Backdrop */}
@@ -50,7 +52,7 @@ export function CongratulationsModal({ data, onClose, onLearnMore }: Props) {
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 52, lineHeight: 1, marginBottom: 12 }}>🎉</div>
           <div style={{ color: T.ink, fontWeight: 800, fontSize: 20, letterSpacing: "-0.04em", lineHeight: 1.2 }}>
-            恭喜你完成了
+            {t("congrats.title")}
           </div>
           <div style={{ color: T.accent, fontWeight: 700, fontSize: 16, marginTop: 6, letterSpacing: "-0.03em" }}>
             「{data.taskTitle}」
@@ -60,7 +62,7 @@ export function CongratulationsModal({ data, onClose, onLearnMore }: Props) {
         {/* Achievement summary */}
         <div style={{ background: "linear-gradient(135deg, #f0f9f4, #e8f4fd)", borderRadius: 12, padding: "14px 16px" }}>
           <div style={{ color: T.green, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
-            🌱 恭喜你对以下内容有了进一步的了解：
+            {t("congrats.learned")}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {data.subtasks.map((s) => (
@@ -73,7 +75,7 @@ export function CongratulationsModal({ data, onClose, onLearnMore }: Props) {
                   )}
                 </div>
                 <span style={{ color: T.green, fontSize: 10, fontFamily: "monospace", flexShrink: 0 }}>
-                  {s.durationDays}天
+                  {t("congrats.days", { count: s.durationDays })}
                 </span>
               </div>
             ))}
@@ -88,7 +90,7 @@ export function CongratulationsModal({ data, onClose, onLearnMore }: Props) {
               border: "1px solid rgba(59,122,255,0.2)",
               fontSize: 11, fontWeight: 600, padding: "4px 12px", borderRadius: 20,
             }}>
-              主题：{data.subtasks[0].topic}
+              {t("congrats.topic", { topic: data.subtasks[0].topic })}
             </span>
           </div>
         )}
@@ -103,7 +105,7 @@ export function CongratulationsModal({ data, onClose, onLearnMore }: Props) {
               cursor: "pointer", letterSpacing: "-0.02em",
             }}
           >
-            📖 进一步学习
+            {t("congrats.learnMore")}
           </button>
           <button
             onClick={onClose}
@@ -113,7 +115,7 @@ export function CongratulationsModal({ data, onClose, onLearnMore }: Props) {
               letterSpacing: "-0.01em",
             }}
           >
-            关闭，查看其他任务
+            {t("congrats.close")}
           </button>
         </div>
       </div>

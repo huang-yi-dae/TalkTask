@@ -1,6 +1,7 @@
 "use client";
 
 import type { Subtask } from "@/lib/db/schema";
+import { useTranslation } from "react-i18next";
 import { GanttChart } from "./gantt-chart";
 
 type Phase =
@@ -21,11 +22,11 @@ interface AnalysisPanelProps {
   errorMsg?: string;
 }
 
-const STEPS: { key: Phase; label: string }[] = [
-  { key: "analyzing",   label: "解析目标" },
-  { key: "decomposing", label: "拆解子任务" },
-  { key: "scheduling",  label: "生成排期" },
-  { key: "done",        label: "计划就绪" },
+const STEPS: { key: Phase }[] = [
+  { key: "analyzing" },
+  { key: "decomposing" },
+  { key: "scheduling" },
+  { key: "done" },
 ];
 
 const PHASE_ORDER: Phase[] = [
@@ -42,12 +43,13 @@ export function AnalysisPanel({
   deltaLen = 0,
   errorMsg = "",
 }: AnalysisPanelProps) {
+  const { t } = useTranslation();
   const running = !["idle", "done", "error"].includes(phase);
 
   if (phase === "idle") {
     return (
       <p className="text-[14px]" style={{ color: "#777B75" }}>
-        {goal ? "按 Enter 或点击「开始分析」" : "输入你的目标，AI 自动拆解任务"}
+        {goal ? t("analysisPanel.hintReady") : t("analysisPanel.hintEmpty")}
       </p>
     );
   }
@@ -66,7 +68,7 @@ export function AnalysisPanel({
       </div>
 
       {/* Ritual step rows */}
-      <div className="flex flex-col" style={{ maxWidth: 620 }} aria-label="AI 分析进度">
+      <div className="flex flex-col" style={{ maxWidth: 620 }} aria-label={t("analysisPanel.progressAria")}>
         {STEPS.map((step, i) => {
           if (phaseIdx(phase) < phaseIdx(step.key)) return null;
           const done = phaseIdx(phase) > phaseIdx(step.key) || phase === "done";
@@ -100,7 +102,7 @@ export function AnalysisPanel({
                 {active && !done && <BlinkDot />}
               </div>
 
-              <span>{step.label}</span>
+              <span>{t(`analysisPanel.steps.${step.key}`)}</span>
 
               {/* Time tag / delta counter */}
               <span
@@ -113,7 +115,7 @@ export function AnalysisPanel({
                 {done
                   ? "✓"
                   : active && step.key === "decomposing" && deltaLen > 0
-                  ? `${deltaLen} 字`
+                  ? t("analysisPanel.chars", { count: deltaLen })
                   : active
                   ? "…"
                   : ""}
@@ -134,7 +136,7 @@ export function AnalysisPanel({
               >
                 ✕
               </div>
-              <span>分析失败，请重试</span>
+              <span>{t("analysisPanel.failed")}</span>
             </div>
             {errorMsg && (
               <p
@@ -157,7 +159,7 @@ export function AnalysisPanel({
             fontFamily: "var(--font-geist-mono), monospace",
           }}
         >
-          请稍候…
+          {t("analysisPanel.waiting")}
         </p>
       )}
 
@@ -176,6 +178,7 @@ function TaskCards({
   subtasks: Subtask[];
   totalDays: number;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="rounded-[20px] overflow-hidden"
@@ -216,7 +219,7 @@ function TaskCards({
               fontFamily: "var(--font-geist-mono), monospace",
             }}
           >
-            {s.durationDays}天
+            {t("analysisPanel.days", { count: s.durationDays })}
           </span>
         </label>
       ))}
