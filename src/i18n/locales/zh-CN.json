@@ -66,6 +66,28 @@
       "command": "bun dev"
     }
   },
+  "timelineCard": {
+    "bloom": {
+      "1": "记忆",
+      "2": "理解",
+      "3": "应用",
+      "4": "分析",
+      "5": "评估",
+      "6": "创造"
+    },
+    "pendingCount": "{{count}} 项待完成",
+    "viewDetail": "{{title}}{{done}}，查看详情",
+    "completedMark": "（已完成）",
+    "completeThis": "完成此项 · ",
+    "toggle": "切换",
+    "markUndone": "取消完成",
+    "markDone": "标记已完成",
+    "days": "{{count}}天",
+    "postponeAria": "延迟一天",
+    "postponeTitle": "延迟一天（顺延排期）",
+    "skipAria": "跳过此任务",
+    "skipTitle": "跳过此任务（标记为已完成，无需执行）"
+  },
   "home": {
     "brand": "拾级",
     "tagline": "把目标拆成每天能完成的小步骤",

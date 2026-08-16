@@ -14,6 +14,7 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import type { SubtaskWithTask } from "@/lib/api/tasks";
 export { getSubtaskDateRange, getSubtaskActualDates } from "./subtask-row";
 
@@ -29,9 +30,6 @@ export const T = {
 export const BLOOM_COLORS: Record<number, string> = {
   1: "#94a3b8", 2: "#60a5fa", 3: "#34d399",
   4: "#f97316", 5: "#a78bfa", 6: "#f43f5e",
-};
-const BLOOM_LABELS: Record<number, string> = {
-  1: "记忆", 2: "理解", 3: "应用", 4: "分析", 5: "评估", 6: "创造",
 };
 
 // ─── 大任务主题色（按 topic 字段分配，保持跨卡片一致）──────────────────────
@@ -57,6 +55,7 @@ interface SectionHeaderProps {
   pendingCount: number;
 }
 export function TimelineSectionHeader({ label, sublabel, accentColor, pendingCount }: SectionHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
       {/* 左侧彩色竖条 */}
@@ -68,7 +67,7 @@ export function TimelineSectionHeader({ label, sublabel, accentColor, pendingCou
       <div style={{ flex: 1 }} />
       {pendingCount > 0 && (
         <div style={{ fontSize: 11, color: T.muted }}>
-          {pendingCount} 项待完成
+          {t("timelineCard.pendingCount", { count: pendingCount })}
         </div>
       )}
     </div>
@@ -95,8 +94,11 @@ export function TimelineCard({
   row, isSelected, isHighlighted, isActive = false,
   onOpen, onSelect, onToggle, onSkip, onPostpone,
 }: CardProps) {
+  const { t } = useTranslation();
+  const BLOOM_LABELS = t("timelineCard.bloom", { returnObjects: true }) as Record<number, string>;
   const taskColor = getTaskColor(row.taskId, row.topic);
   const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
   const [animKey, setAnimKey] = useState(0);
   const prevCompleted = useRef(row.completed);
 
@@ -112,7 +114,7 @@ export function TimelineCard({
   // urgency 1=极紧急(高bloom)→5=不紧急(低bloom)，倒转映射 bloom 1-5
   const bloomRaw = row.urgency ? Math.max(1, Math.min(5, 6 - row.urgency)) : 2;
   const bloomColor = BLOOM_COLORS[bloomRaw] ?? BLOOM_COLORS[2];
-  const bloomLabel = BLOOM_LABELS[bloomRaw] ?? "理解";
+  const bloomLabel = BLOOM_LABELS[bloomRaw] ?? BLOOM_LABELS[2];
 
   // 预估深度学习时长：durationDays * 1.5h/天，上限 4.5h
   const deepHours = Math.min(4.5, Math.max(1.5, row.durationDays * 1.5));
@@ -120,13 +122,21 @@ export function TimelineCard({
   const barPct = Math.min(100, Math.round((deepHours / 4.5) * 100));
 
   // 日期文字
-  const dateRange = getDateLabel(row);
+  const dateRange = getDateLabel(row) ?? (row.taskStartDate ? null : t("timelineCard.days", { count: row.durationDays }));
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={t("timelineCard.viewDetail", { title: row.title, done: row.completed ? t("timelineCard.completedMark") : "" })}
       onClick={() => { onOpen(); onSelect(); }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); onSelect(); }
+      }}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseLeave={() => { setHovered(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
       style={{
         background: isHighlighted ? T.highlight : row.completed ? "#FAFAF9" : T.surface,
         // 用非简写的分边属性，避免与 borderLeft 混用（React 会警告简写/非简写冲突）
@@ -143,7 +153,9 @@ export function TimelineCard({
           ? `0 0 0 3px ${taskColor}33, 0 4px 14px ${taskColor}22`
           : isSelected ? `0 0 0 2px ${taskColor}30` : "0 1px 4px rgba(17,17,17,0.04)",
         cursor: "pointer",
-        transition: "all 0.18s",
+        scale: pressed ? "0.99" : "1",
+        transition:
+          "background-color 0.18s ease-out, border-color 0.18s ease-out, box-shadow 0.18s ease-out, opacity 0.18s ease-out, scale 0.12s ease-out",
       }}
     >
       {/* ── 键盘选中提示条 ── */}
@@ -155,9 +167,9 @@ export function TimelineCard({
           padding: "3px 12px", fontSize: 10, color: taskColor, fontWeight: 600,
         }}>
           <kbd style={{ background: "#fff", border: `1px solid ${taskColor}40`, borderRadius: 4, padding: "0 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 9, color: taskColor }}>Space</kbd>
-          <span>完成此项 · </span>
+          <span>{t("timelineCard.completeThis")}</span>
           <kbd style={{ background: "#fff", border: `1px solid ${taskColor}40`, borderRadius: 4, padding: "0 5px", fontFamily: "var(--font-geist-mono), monospace", fontSize: 9, color: taskColor }}>↑↓</kbd>
-          <span>切换</span>
+          <span>{t("timelineCard.toggle")}</span>
         </div>
       )}
       {/* ── 顶部时长色条 ── */}
@@ -178,15 +190,21 @@ export function TimelineCard({
           <button
             key={`circle-${animKey}`}
             onClick={(e) => { e.stopPropagation(); onToggle(e); }}
-            title={row.completed ? "取消完成" : "标记已完成"}
+            aria-label={row.completed ? t("timelineCard.markUndone") : t("timelineCard.markDone")}
+            aria-pressed={row.completed}
+            title={row.completed ? t("timelineCard.markUndone") : t("timelineCard.markDone")}
             className={row.completed && animKey > 0 ? "check-bounce" : ""}
             style={{
               width: 22, height: 22, borderRadius: "50%", flexShrink: 0, marginTop: 1,
+              // 透明 padding 扩大触控热区到 ~40px，负 margin 抵消布局位移（M2）
+              padding: 9, margin: "-8px 0 -9px -9px", boxSizing: "content-box" as const,
+              backgroundClip: "content-box",
               border: `2px solid ${row.completed ? taskColor : hovered ? taskColor : T.line}`,
               background: row.completed ? taskColor : hovered ? `${taskColor}12` : "transparent",
               cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "all 0.18s",
+              transition:
+                "background-color 0.18s ease-out, border-color 0.18s ease-out, scale 0.12s ease-out",
             }}
           >
             {row.completed
@@ -256,43 +274,45 @@ export function TimelineCard({
               <div style={{ fontSize: 13, fontWeight: 700, color: taskColor, letterSpacing: "-0.02em", lineHeight: 1 }}>
                 {deepHours}h
               </div>
-              <div style={{ fontSize: 9, color: T.muted, marginTop: 2 }}>{row.durationDays}天</div>
+              <div style={{ fontSize: 9, color: T.muted, marginTop: 2 }}>{t("timelineCard.days", { count: row.durationDays })}</div>
             </div>
             {/* 延迟 / 跳过：默认收起，hover 卡片时才横向浮现，保持卡片清爽 */}
             {!row.completed && (
               <div style={{
                 display: "flex", alignItems: "center", gap: 2,
                 opacity: hovered ? 1 : 0,
-                maxWidth: hovered ? 56 : 0,
+                maxWidth: hovered ? 64 : 0,
                 overflow: "hidden",
                 transition: "opacity 0.18s, max-width 0.18s",
               }}>
                 <button
                   onClick={(e) => { e.stopPropagation(); onPostpone(e); }}
-                  title="延迟一天（顺延排期）"
+                  aria-label={t("timelineCard.postponeAria")}
+                  title={t("timelineCard.postponeTitle")}
                   style={{
-                    width: 24, height: 24, borderRadius: 6, border: "none",
+                    width: 28, height: 28, borderRadius: 6, border: "none",
                     background: "transparent", color: T.muted, fontSize: 13,
                     cursor: "pointer", flexShrink: 0,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    transition: "all 0.15s",
+                    transition: "background-color 0.15s ease-out, color 0.15s ease-out",
                   }}
                   onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = `${T.orange}14`; (e.currentTarget as HTMLButtonElement).style.color = T.orange; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = T.muted; }}
-                >⏭</button>
+                ><span aria-hidden>⏭</span></button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onSkip(e); }}
-                  title="跳过此任务（标记为已完成，无需执行）"
+                  aria-label={t("timelineCard.skipAria")}
+                  title={t("timelineCard.skipTitle")}
                   style={{
-                    width: 24, height: 24, borderRadius: 6, border: "none",
+                    width: 28, height: 28, borderRadius: 6, border: "none",
                     background: "transparent", color: T.muted, fontSize: 14,
                     cursor: "pointer", flexShrink: 0,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    transition: "all 0.15s",
+                    transition: "background-color 0.15s ease-out, color 0.15s ease-out",
                   }}
                   onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = `${taskColor}12`; (e.currentTarget as HTMLButtonElement).style.color = taskColor; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = T.muted; }}
-                >⤼</button>
+                ><span aria-hidden>⤼</span></button>
               </div>
             )}
           </div>
@@ -304,7 +324,7 @@ export function TimelineCard({
 
 // ─── 日期标签辅助 ────────────────────────────────────────────────────────────
 function getDateLabel(row: SubtaskWithTask): string | null {
-  if (!row.taskStartDate) return `${row.durationDays}天`;
+  if (!row.taskStartDate) return null;
   const base = new Date(row.taskStartDate);
   if (isNaN(base.getTime())) return null;
   const s = new Date(base); s.setDate(base.getDate() + row.startDay);

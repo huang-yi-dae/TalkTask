@@ -66,6 +66,28 @@
       "command": "bun dev"
     }
   },
+  "timelineCard": {
+    "bloom": {
+      "1": "Remember",
+      "2": "Understand",
+      "3": "Apply",
+      "4": "Analyze",
+      "5": "Evaluate",
+      "6": "Create"
+    },
+    "pendingCount": "{{count}} pending",
+    "viewDetail": "{{title}}{{done}}, view details",
+    "completedMark": " (completed)",
+    "completeThis": "Complete this · ",
+    "toggle": "toggle",
+    "markUndone": "Unmark",
+    "markDone": "Mark complete",
+    "days": "{{count}}d",
+    "postponeAria": "Postpone one day",
+    "postponeTitle": "Postpone one day (shift schedule)",
+    "skipAria": "Skip this task",
+    "skipTitle": "Skip this task (mark complete without doing it)"
+  },
   "home": {
     "brand": "Steps",
     "tagline": "Break goals into small steps you can finish each day",

@@ -41,18 +41,85 @@ export const maxDuration = 300;
  * Buffered (non-streaming) so the route completes within serverless limits and
  * returns one JSON payload instead of an SSE stream. The AI call goes through
  * the BYOK provider (EAZO_AI_PROVIDER_MODE=byok) configured via .env.
+ *
+ * 容错策略（双模式）：
+ * 1. 首选 json_object 模式 + 最多 2 次重试（DeepSeek v4-flash 在该模式下偶发
+ *    返回空 content，官方已知 bug，需重试缓解）。
+ * 2. 若 json_object 模式连续失败，fallback 到普通 text 模式再试一次（同样可能
+ *    命中空 content bug，但不同请求路径成功率更高）。
+ * 两层都失败时返回空字符串，由调用方输出精确错误提示。
  */
-async function callAI(systemPrompt: string, userMessage: string): Promise<string> {
-  const completion = await appAi.chat({
-    model: process.env.AI_PROVIDER_MODEL || "deepseek-chat",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage },
-    ],
-    stream: false,
-    max_tokens: 2500,
-  });
-  return completion.choices?.[0]?.message?.content ?? "";
+async function callAI(systemPrompt: string, userMessage: string, retries = 2): Promise<string> {
+  let lastError: Error | undefined;
+
+  // 第一轮：json_object 模式 + 重试
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const completion = await appAi.chat({
+        model: process.env.AI_PROVIDER_MODEL || "deepseek-chat",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        stream: false,
+        // 调大上限，避免复杂任务的 Plan JSON 被截断（截断会导致 JSON 不完整、解析失败）
+        max_tokens: 4000,
+        // 强制模型只输出纯 JSON，消除 markdown 代码块包裹 / 额外说明文字导致的解析失败
+        response_format: { type: "json_object" },
+      });
+      const content = completion.choices?.[0]?.message?.content ?? "";
+      if (content.trim()) {
+        return content;
+      }
+      // 空 content：DeepSeek json_object 模式偶发 bug，记录并进入重试
+      lastError = new Error("AI returned empty content (json_object)");
+      console.warn(
+        `[AutoTask] AI returned empty content (json_object attempt ${attempt + 1}/${retries + 1}), retrying...`
+      );
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(
+        `[AutoTask] AI call failed (json_object attempt ${attempt + 1}/${retries + 1}):`,
+        lastError.message
+      );
+    }
+    // 最后一次失败后不再等待
+    if (attempt < retries) {
+      await new Promise((res) => setTimeout(res, 800 * (attempt + 1)));
+    }
+  }
+
+  // 第二轮：json_object 模式连续失败 → fallback 到普通 text 模式
+  // DeepSeek 官方对该 bug 的唯一建议是「改 prompt / 换请求路径」，text 模式是
+  // 不同请求路径，命中空 content 的概率通常低于 json_object 模式。
+  try {
+    console.warn("[AutoTask] falling back to plain text mode (no response_format)");
+    const completion = await appAi.chat({
+      model: process.env.AI_PROVIDER_MODEL || "deepseek-chat",
+      messages: [
+        {
+          role: "system",
+          content:
+            systemPrompt +
+            "\n请只输出一个 JSON 对象，不要包含任何 markdown 代码块或额外说明文字。",
+        },
+        { role: "user", content: userMessage },
+      ],
+      stream: false,
+      max_tokens: 4000,
+    });
+    const content = completion.choices?.[0]?.message?.content ?? "";
+    if (content.trim()) {
+      return content;
+    }
+    lastError = new Error("AI returned empty content (text fallback)");
+  } catch (err) {
+    lastError = err instanceof Error ? err : new Error(String(err));
+    console.warn("[AutoTask] AI call failed (text fallback):", lastError.message);
+  }
+
+  // 两层都失败，返回空字符串让外层输出精确错误提示
+  return "";
 }
 
 function parseJson<T>(text: string): T | null {
@@ -191,7 +258,14 @@ export async function POST(
     }
     interface PlanResult { subtasks?: PlanSubtask[] }
     const plan = parseJson<PlanResult>(planRaw);
-    if (!plan?.subtasks?.length) throw new Error("AI 未生成有效计划");
+    if (!plan || !Array.isArray(plan.subtasks) || plan.subtasks.length === 0) {
+      if (!planRaw || !planRaw.trim()) {
+        throw new Error("AI 返回内容为空，可能模型未响应或连接异常");
+      }
+      // 记录原始返回前缀，便于线上 Vercel 日志排查（截断避免刷屏）
+      console.error("[AutoTask] plan stage raw (truncated):", planRaw.slice(0, 500));
+      throw new Error("AI 返回了内容但解析不出子任务列表，可能是返回格式异常或被截断");
+    }
 
     // ── Stage 4: Validate ─────────────────────────────────────────
     const validateRaw = await callAI(
