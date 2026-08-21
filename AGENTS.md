@@ -152,7 +152,7 @@ bun run db:studio        # Drizzle Studio
 
 ## 8. AI 规划流水线详解
 
-入口：`src/app/api/tasks/[id]/analyze/route.ts`。**缓冲（非流式）**，`export const maxDuration = 300`（Vercel Fluid compute 上限，避免中途超时丢失前面各阶段结果）。所有 AI 调用经 `appAi.chat({ stream: false })`（`byok` 模式）。
+入口：`src/app/api/tasks/[id]/analyze/route.ts`。**缓冲 JSON**：一次请求串行跑完 4+ 段 AI 流水线后统一返回结果；前端/RSC 不依赖 SSE，避免流式超时导致半截响应。
 
 | 阶段 | 提示词 | 主要输出 |
 |---|---|---|
@@ -257,7 +257,6 @@ bun run db:studio        # Drizzle Studio
 ## 15. 已知遗留 / 待清理
 
 - `src/app/layout.tsx` 的 metadata 仍引用 `eazo.ai` 的 favicon 与 `openGraph.siteName: "Eazo"`，品牌未完全切换为「拾级」。
-- PRD.md 与旧 AGENTS 描述「SSE 流式分析」，但当前后端为**缓冲 JSON**（见第 8 节）；前端分析面板以 JSON 结果驱动。
 - 界面文案目前为中文硬编码，i18n 仅保留脚手架（`en-US` / `zh-CN`），未全面接入 `t()`。
 
 ### 15.1 认证 / 账号系统 TODO（不在 v1 范围）

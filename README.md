@@ -119,7 +119,7 @@ bun dev
 
 ## AI 任务规划流程
 
-`POST /api/tasks/:id/analyze` 在后端 **串行执行 4+ 次 LLM 调用**，缓冲后一次性返回 JSON 结果（**非 SSE 流式**；`maxDuration=300s` 以适配 Vercel Fluid compute 上限）：
+`POST /api/tasks/:id/analyze` 在后端 **串行执行 4+ 次 LLM 调用**，缓冲后一次性返回 JSON 结果（**非 SSE 流式**）：
 
 1. **意图解析（Intent）**：提取任务名、主题、紧急/重要度、先验水平、Bloom 目标层级、预计总时长、搜索关键词。
 2. **资源检索（两阶段）**：① AI 只生成搜索意图（不产 URL）；② 代码调用 Tavily 从白名单域名取真实 URL，再做三维可信度校验。
