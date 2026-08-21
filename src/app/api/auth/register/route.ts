@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // 4) 在一个事务里做：插新用户 → 迁移 tasks → 删临时用户
-    await db.transaction(async (tx: typeof db) => {
+    await db.transaction(async (tx) => {
       // 插新用户
       await tx.insert(users).values({
         id: newUserId,
