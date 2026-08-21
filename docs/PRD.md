@@ -82,7 +82,7 @@
 ### 3.2 功能详细说明
 
 #### 3.2.1 新建任务
-1. 点击右上角「+ 新建任务」（未登录则先触发 SDK 登录流）
+1. 点击右上角「+ 新建任务」（未登录则先触发 SDK 登录流）—— *（已替换为自托管 JWT cookie；详见 §5.2）*
 2. 弹出 `NewTaskInput` 对话框，填写目标描述
 3. 按 Enter 或点击「开始分析 →」
 4. 弹窗立即关闭；右侧面板新增一个标签页，AI 分析实时开始
@@ -268,17 +268,29 @@ Subtask.completed:
   true   ──[用户取消]──▶  false
 ```
 
-### 4.4 认证流程
+### 4.4 认证流程（*已替换为自托管 JWT cookie 模型*）
+
+自托管版不再使用 `@eazo/sdk` 的登录 UI / Bridge handshake。当前流程：
 
 ```
-Web 浏览器：
-  auth.login() → SDK 弹出登录 UI → 登录成功
-  → SDK 调用 GET /api/user/profile → upsertUser() → DB users 表
+Web 浏览器（首次访问，无 cookie）：
+  任意 /api/* 请求 → middleware 拦截 → createTempAccount() → 签 JWT
+  → Set-Cookie __Host-session → 后续请求均带临时账号
 
-Eazo Mobile WebView：
-  Bridge handshake → host 注入 user → SDK 设置 auth 状态
-  → UserSyncEffect 检测 platform==="mobile" → GET /api/user/profile → upsertUser()
+Web 浏览器（注册）：
+  /api/auth/register (限流) → 写 users 行 + bcrypt hash
+  → 若是临时 cookie：同事务 UPDATE tasks user_id → 签新 JWT
+  → Set-Cookie __Host-session → 徽章变真名
+
+Web 浏览器（登录）：
+  /api/auth/login (限流) → 按 emailLower 查 users → bcrypt verify
+  → 签 JWT → Set-Cookie __Host-session
+
+登出：
+  /api/auth/logout → Set-Cookie Max-Age=0 → middleware 下一次兜底建新临时账号
 ```
+
+RSC 根布局在 `getCurrentUser()` 阶段直接读 cookie 解出 user，首屏零闪烁。
 
 ---
 
@@ -515,21 +527,20 @@ data: {"event":"error","data":{"message":"AI 分析失败: ..."}}
 }
 ```
 
-### 6.3 认证机制
+### 6.3 认证机制（*已替换为自托管 JWT cookie*）
 
 ```typescript
-// 服务端：所有受保护路由第一行
-const auth = requireAuth(request);
+// 服务端：所有受保护路由第一行（middleware 已自动建临时账号）
+const auth = await requireAuth(request);
 if (!auth.ok) return auth.response; // 401 Unauthorized
+const userId = auth.user.id; // string，来自 JWT (jose) → users.id 查库
 
-const userId = auth.user.id; // string，来自 @eazo/sdk/server 解密 session
-
-// 客户端：request() 自动注入 session header
+// 客户端：request() 自动注入 locale header；session 由浏览器 cookie 自动携带
 import { request } from "@/lib/api/request";
 const res = await request("/api/tasks");
-// → 自动添加 "x-eazo-session": await auth.getSessionHeader()
 // → 自动添加 "x-app-locale": getResolvedLocale()
 // → 自动处理 402 app_ai_unavailable → Sonner toast
+// （不再注入 x-eazo-session —— cookie 由浏览器自动附带）
 ```
 
 ### 6.4 MCP 工具（`/api/mcp`）
@@ -874,15 +885,17 @@ animation: `ganttGrow 0.9s cubic-bezier(.2,.8,.2,1) ${i * 0.12}s both`
 
 | 变量 | 必填 | 说明 |
 |---|---|---|
-| `DATABASE_URL` | ✅ | PostgreSQL 连接串（Eazo 托管 DB 自动注入） |
-| `EAZO_APP_AI_API_BASE` | ✅ | Eazo AI Gateway 地址 |
-| `EAZO_APP_ID` | ✅ | 当前 App ID |
-| `EAZO_AI_MODELS_JSON` | ✅ | 可用模型列表 JSON |
-| `EAZO_AI_MODEL_KEY` | ❌ | 默认 `deepseek.v3.2` |
-| `EAZO_AI_PROVIDER_MODE` | ❌ | `eazo`（默认）或 `byok` |
+| `DATABASE_URL` | ✅ | PostgreSQL 连接串（自托管时自配） |
+| `AUTH_SECRET` | ✅ | JWT (HS256) 签名密钥，**≥ 32 字符**；缺失即启动报错。`openssl rand -hex 32` 生成 |
+| `EAZO_APP_AI_API_BASE` | ❌ | *（已替换）* 自托管不需要；`byok` 模式走 `AI_PROVIDER_BASE_URL` |
+| `EAZO_APP_ID` | ❌ | *（已替换）* 自托管不需要 |
+| `EAZO_AI_MODELS_JSON` | ❌ | *（已替换）* 自托管不需要 |
+| `EAZO_AI_MODEL_KEY` | ❌ | *（已替换）* 自托管使用 `AI_PROVIDER_MODEL` |
+| `EAZO_AI_PROVIDER_MODE` | ✅ | 自托管默认 `byok` |
+| `AI_PROVIDER_BASE_URL` / `AI_PROVIDER_API_KEY` / `AI_PROVIDER_MODEL` | ✅ | byok 模式下必填 |
 | `NEXT_PUBLIC_APP_TITLE` | ❌ | App 标题（默认 拾级） |
 | `NEXT_PUBLIC_APP_DESCRIPTION` | ❌ | App 描述 |
-| `CRON_SECRET` | ✅ | Vercel Cron 鉴权密钥 |
+| `CRON_SECRET` | ❌ | Vercel Cron 鉴权密钥（仅在 `vercel.json` 的 cron 配置启用时必填） |
 
 ---
 
@@ -994,28 +1007,31 @@ The platform exposes capabilities through `@eazo/sdk`. Most capabilities (`auth`
 
 Mount `EazoProvider` once at the root layout. Also mount `UserSyncEffect` inside the provider — it upserts the authenticated user to the local DB after every login (Web and Mobile both converge through `GET /api/user/profile`).
 
-### 5.2 `auth`
+### 5.2 `auth`（*已替换为自托管 JWT cookie 模型，原 SDK auth 流不再可用*）
+
+拾级在自托管模式下使用 **JWT cookie** 鉴权（`jose` + HS256，密钥 `AUTH_SECRET`）。完整架构见 [AGENTS.md §11](../AGENTS.md)。
+
+客户端兼容层（`useEazo(s => s.auth.user)` / `auth.login()` / `auth.logout()`）保持原有 API 形态，底层改为代理到 `/api/auth/login` / `/api/auth/logout` / `/api/auth/me`。
 
 ```ts
-auth.user / auth.loading / auth.authenticated
-await auth.getToken()
-auth.onChange(user => {})
-await auth.loginWithSocial("google")
-await auth.loginWithEmailPassword(email, password)
-await auth.loginWithEmailCode(email, code)
-await auth.sendEmailCode(email)
-await auth.logout()
-await auth.login()        // opens UI if needed
-auth.showLogin() / auth.hideLogin()
+// 客户端
+useEazo((s) => s.auth.user)        // → User（来自 RSC 注入的 <UserProvider>）
+auth.login(email, password)          // → 已变为 no-op（实际登录走 <AuthModal>）
+auth.logout()                        // → POST /api/auth/logout + 清本地 user
+auth.refresh()                       // → 重新拉 /api/auth/me，更新 store
 ```
 
-Server-side guard:
+Server-side guard：
 ```ts
 import { requireAuth } from "@/lib/auth";
-const r = requireAuth(request);
-if (!r.ok) return r.response;
-// r.user: { id, email, name, avatarUrl }
+const r = await requireAuth(request);
+if (!r.ok) return r.response;       // 401
+// r.user: { id, email, name, avatarUrl, emailLower, passwordHash, ... }
 ```
+
+**用户首次访问**无需登录：middleware（`src/middleware.ts`）兜底建临时账号，签 JWT，写 `__Host-session` cookie。**注册时**自动把临时账号下的任务转移到正式账号（同事务 `UPDATE tasks SET user_id = new` + `DELETE FROM users WHERE id = temp`）。**限流**：`/api/auth/register` 与 `/api/auth/login` 共享 60s / 5 次 / IP（`auth_attempts` 表）。
+
+> 未做的事（v1 范围外）：邮箱验证、密码找回、JWT 撤销列表、Turnstile、第三方 OAuth、密码强度策略、双因素认证。详见 [AGENTS.md §15.1](../AGENTS.md)。
 
 ### 5.3 `device`
 

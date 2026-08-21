@@ -19,11 +19,11 @@
 
 - **`src/lib/eazo-shim.ts`** — 替换 `@eazo/sdk/react`：
   - `EazoProvider`：纯 passthrough（直接返回 children）。
-  - `auth`：单例，固定一个 demo 用户，`login()` / `logout()` 均为 no-op。
+  - `auth`：单例，**代理到 `/api/auth/login` / `/api/auth/logout` / `/api/auth/me`**；`login()` / `logout()` 不再是 no-op。
   - `memory`：`reportAction()` 为 no-op（平台长期记忆在站外不可用）。
-  - `useEazo(selector)`：zustand 风格选择器 hook。
-  - **没有真实登录**：每个访客都是同一个 demo 用户。
-- **`src/lib/auth/index.ts`** — 替换 `@eazo/sdk/server` 的 `requireAuth`：解析单一 demo 用户并**懒写入本地 DB**（保证 `tasks.userId → users.id` 外键始终有对应行）。所有受保护路由第一行调用 `await requireAuth(request)`。
+  - `useEazo(selector)`：从 `<UserProvider>` 读真实 user。
+  - **真实登录态**：每个访客都是 JWT cookie 解析出的独立 user；没有 cookie 时由 middleware 兜底建临时账号。
+- **`src/lib/auth/index.ts`** — 替换 `@eazo/sdk/server` 的 `requireAuth`：解析 `__Host-session` cookie → JWT 校验 → 查 users → 返回 `{ ok, user, userId }`。所有受保护路由第一行调用 `await requireAuth(request)`。
 - **`src/lib/eazo-ai-billing.ts`** — `appAi.chat()` 客户端，两种模式：
   - `byok`（`EAZO_AI_PROVIDER_MODE=byok`，自托管默认）：直连 `AI_PROVIDER_BASE_URL` 的 OpenAI 兼容 `/v1/chat/completions`。
   - `eazo`（平台）：走 Eazo Creator Proxy（`EAZO_APP_AI_API_BASE`）。自托管不需要。
@@ -37,22 +37,24 @@
 ```
 src/
   app/
-    layout.tsx                      根布局：I18nProvider > EazoProvider(shim) > UserSyncEffect > Toaster
+    layout.tsx                      根布局：I18nProvider > UserProvider > EazoProvider(shim) > LocaleSyncEffect > Toaster
     page.tsx                        首页入口 → <HomePage />
     task/[id]/page.tsx              任务详情页（甘特图）
     history/page.tsx                历史任务页
     api/
+      auth/{register,login,logout,me}/route.ts  公开鉴权（限流）
       tasks/route.ts                GET 列表 / POST 创建
       tasks/[id]/route.ts           GET / PATCH(status) / DELETE(级联)
       tasks/[id]/analyze/route.ts   POST 4+ 段 AI 流水线（缓冲 JSON，非 SSE）
       tasks/[id]/subtasks/[subtaskId]/route.ts  PATCH 切换完成状态
       subtasks/route.ts             GET 全量子任务 JOIN 大任务
-      user/profile/route.ts         GET 用户 upsert
+      user/profile/route.ts         GET 当前用户
       user/stats/route.ts           GET 统计
       mcp/route.ts                  GET/POST/DELETE MCP Streamable HTTP
       notifications/cron/daily-digest/route.ts   Vercel Cron 每日提醒
       notifications/test/route.ts    测试推送
   components/
+    auth/        auth-modal
     home/        home-page / new-task-input / subtask-row / subtask-detail-modal / congrats-modal / right-panel
     task/        gantt-chart / task-detail-page-v2
     history/     history-page
@@ -62,10 +64,10 @@ src/
   lib/
     ai/prompts.ts        INTENT / RESOURCE_INTENT / PLAN / VALIDATE 提示词
     api/                 request / tasks / user-profile / app-ai-request / index
-    auth/index.ts        requireAuth → demo 用户（自托管）
-    db/                  schema(tasks,subtasks,users) / queries / client / migrate / migrations/
+    auth/                index.ts(jwt cookie) / env / jwt / password / cookie / temp-account / ratelimit / current-user / user-provider
+    db/                  schema(tasks,subtasks,users,auth-attempts) / queries / client / migrate / migrations/
     eazo-ai-billing.ts   appAi 客户端（byok / creator proxy）
-    eazo-shim.ts         EazoProvider / auth / memory / useEazo 兼容层
+    eazo-shim.ts         EazoProvider / auth / memory / useEazo 兼容层（读 UserProvider）
     fetchers/            article / arxiv / bilibili / course / pdf / workspace / fallback
     i18n/                locale / preference / server-locale / server-preference
     mcp/server.ts        MCP 工具定义
@@ -73,6 +75,7 @@ src/
     scheduler.ts         全局排期算法（Bloom 渐进 + 每日槽位）
     tavily.ts            resolveResources（两阶段资源检索）
     url-fetcher.ts       URL 内容抓取与格式化
+  middleware.ts                          兜底建临时账号 + 滑动续期
   utils/utils.ts         cn() Tailwind 类名合并
 ```
 
@@ -92,13 +95,13 @@ bun run db:push          # 直接同步 schema
 bun run db:studio        # Drizzle Studio
 ```
 
-> ⚠️ `bun run cleanup:demo` 在 package.json 中仍有声明，但目标 `scripts/cleanup-demo.ts` 已被删除，**不可用**。
+> ⚠️ 旧的 `bun run cleanup:demo` 已在 2026-08-14 删除（指向不存在的脚本），当前 `package.json` 已不再声明该命令。
 
 ---
 
 ## 5. 环境变量
 
-见 [.env.example](./.env.example)，自托管必填：`DATABASE_URL`、`EAZO_AI_PROVIDER_MODE=byok`、`AI_PROVIDER_BASE_URL`、`AI_PROVIDER_API_KEY`、`AI_PROVIDER_MODEL`。可选：`TAVILY_API_KEY`、demo 用户三件套、`NEXT_PUBLIC_APP_TITLE/DESCRIPTION`、`CRON_SECRET`。
+见 [.env.example](./.env.example)。**必填**：`DATABASE_URL`、`AUTH_SECRET`（≥ 32 字符；缺失即启动报错）、`EAZO_AI_PROVIDER_MODE=byok`、`AI_PROVIDER_BASE_URL`、`AI_PROVIDER_API_KEY`、`AI_PROVIDER_MODEL`。**可选**：`TAVILY_API_KEY`、`NEXT_PUBLIC_APP_TITLE/DESCRIPTION`、`CRON_SECRET`。生成命令：`openssl rand -hex 32`。
 
 ---
 
@@ -106,7 +109,7 @@ bun run db:studio        # Drizzle Studio
 
 | 功能 | 主要文件 |
 |---|---|
-| 认证 / 用户 | `src/lib/auth/index.ts`、`src/lib/eazo-shim.ts`、`src/components/user-profile/*`、`src/app/api/user/profile/route.ts`、`src/app/api/user/stats/route.ts` |
+| 认证 / 用户 | `src/lib/auth/*`（index/jwt/password/cookie/temp-account/ratelimit/current-user/user-provider/env）、`src/middleware.ts`、`src/lib/eazo-shim.ts`、`src/components/user-profile/user-badge.tsx`、`src/components/auth/auth-modal.tsx`、`src/app/api/auth/*`、`src/app/api/user/profile/route.ts`、`src/app/api/user/stats/route.ts` |
 | AI 流水线 | `src/app/api/tasks/[id]/analyze/route.ts`、`src/lib/ai/prompts.ts`、`src/lib/eazo-ai-billing.ts` |
 | 资源检索 | `src/lib/tavily.ts`（resolveResources）、`src/lib/resource-validator.ts`、`src/lib/url-fetcher.ts`、`src/lib/fetchers/*` |
 | 排期 | `src/lib/scheduler.ts`（`computeNewTaskStartDate` / `findNextAvailableDay` / `validateBloomSequence` / `suggestReviewNodes` / `registerDailySlot`） |
@@ -121,22 +124,29 @@ bun run db:studio        # Drizzle Studio
 
 | 方法 | 路径 | 说明 | 鉴权 |
 |---|---|---|---|
-| `POST` | `/api/tasks` | 创建大任务 | demo 用户 |
-| `GET` | `/api/tasks` | 任务列表（含进度计数） | demo 用户 |
-| `GET` | `/api/tasks?withSubtasks=1` | 列表 + 子任务（面板水化） | demo 用户 |
-| `GET` | `/api/tasks/:id` | 单任务 + 子任务 | demo 用户 |
-| `PATCH` | `/api/tasks/:id` | 更新 status | demo 用户 |
-| `DELETE` | `/api/tasks/:id` | 删除（级联子任务） | demo 用户 |
-| `POST` | `/api/tasks/:id/analyze` | 4+ 段 AI 流水线（缓冲 JSON） | demo 用户 |
-| `PATCH` | `/api/tasks/:id/subtasks/:sid` | 切换子任务完成状态 | demo 用户 |
-| `GET` | `/api/subtasks` | 全量子任务 JOIN 大任务 | demo 用户 |
-| `GET` | `/api/user/profile` | 获取 / 创建用户 | demo 用户 |
-| `GET` | `/api/user/stats` | 统计 | demo 用户 |
-| `GET/POST/DELETE` | `/api/mcp` | MCP Streamable HTTP | demo 用户 |
+| `POST` | `/api/auth/register` | 注册账号（含临时账号合并） | 公开（限流） |
+| `POST` | `/api/auth/login` | 登录 | 公开（限流） |
+| `POST` | `/api/auth/logout` | 清 cookie | 已登录 |
+| `GET` | `/api/auth/me` | 当前用户 | 已登录 |
+| `POST` | `/api/tasks` | 创建大任务 | 已登录 |
+| `GET` | `/api/tasks` | 任务列表（含进度计数） | 已登录 |
+| `GET` | `/api/tasks?withSubtasks=1` | 列表 + 子任务（面板水化） | 已登录 |
+| `GET` | `/api/tasks/:id` | 单任务 + 子任务 | 已登录 |
+| `PATCH` | `/api/tasks/:id` | 更新 status | 已登录 |
+| `DELETE` | `/api/tasks/:id` | 删除（级联子任务） | 已登录 |
+| `POST` | `/api/tasks/:id/analyze` | 4+ 段 AI 流水线（缓冲 JSON） | 已登录 |
+| `PATCH` | `/api/tasks/:id/subtasks/:sid` | 切换子任务完成状态 | 已登录 |
+| `GET` | `/api/subtasks` | 全量子任务 JOIN 大任务 | 已登录 |
+| `GET` | `/api/user/profile` | 当前用户（已登录） | 已登录 |
+| `GET` | `/api/user/stats` | 统计 | 已登录 |
+| `GET/POST/DELETE` | `/api/mcp` | MCP Streamable HTTP | 已登录 |
 | `GET` | `/api/notifications/cron/daily-digest` | 每日推送（Cron） | `Bearer ${CRON_SECRET}` |
-| `GET` | `/api/notifications/test` | 测试推送 | demo 用户 |
+| `GET` | `/api/notifications/test` | 测试推送 | 已登录 |
 
-> 鉴权字段均为「demo 用户」：自托管下 `requireAuth` 不校验身份，只保证有一个用户行。
+> 鉴权列三态：
+>   - **已登录** —— `__Host-session` cookie 解析合法 JWT；middleware 已在请求入口兜底建临时账号。
+>   - **公开（限流）** —— 不需要 cookie，但受 60s/5 次/IP 限流（详见 §11）。
+>   - **`Bearer ${CRON_SECRET}`** —— Vercel Cron；被 middleware matcher 排除，不消耗临时账号 / 限流。
 
 ---
 
@@ -180,13 +190,48 @@ bun run db:studio        # Drizzle Studio
 
 ## 11. 认证模型（自托管）
 
-无登录态。客户端 `eazo-shim.ts` 与服务端 `auth/index.ts` 都解析同一个 demo 用户（由 `NEXT_PUBLIC_DEMO_USER_*` 配置）。服务端 `requireAuth` 首次调用时会把该用户 upsert 进 `users` 表（每冷启动一次）。多用户隔离在自托管下不成立——所有访客共享一份数据。
+拾级在自托管模式下采用**演示版多用户账号隔离**：每个访客都是独立的 JWT cookie 身份，访客无需登录即可创建任务，注册时无缝接管临时账号下的全部数据。
+
+### 11.1 三层鉴权边界
+
+1. **Edge / Server Middleware（`src/middleware.ts`）** — match `/api/((?!auth/register|auth/login|notifications/cron).*)`：未带合法 cookie 的请求自动 `createTempAccount()` + 签 JWT + Set-Cookie；合法 cookie 的请求每次刷新 Max-Age（**滑动续期 30 天**）。
+2. **`requireAuth(request)`（`src/lib/auth/index.ts`）** — 解析 cookie → `verifySession` → 查 users → 返回 `{ ok, user, userId }` 或抛 401。**所有受保护路由 handler 第一行 await。**
+3. **RSC `<UserProvider>`（`src/lib/auth/user-provider.tsx` + `src/app/layout.tsx`）** — 根布局在 RSC 阶段直接调 `getCurrentUser()` 解出 user，作为 props 注入 `<UserProvider user={user}>`，客户端 `useEazo()` 读 Context，**首屏零闪烁**。
+
+### 11.2 协议与存储
+
+- **JWT + HMAC-SHA256**（`jose` 库），过期 30 天；密钥 `AUTH_SECRET`，**≥ 32 字符，缺失即启动报错**。
+- **Cookie** 名称 `__Host-session`，`httpOnly`、`SameSite=Lax`、`Path=/`、`Max-Age=30d`；`Secure` 仅在生产环境启用。
+- **密码 hash** 用 `bcryptjs` cost=10；临时账号 `passwordHash = ""`。
+- **数据模型**（`users` 表新增两列 + 一张限流表）：
+  - `passwordHash text NOT NULL DEFAULT ''`
+  - `emailLower varchar(256) UNIQUE` —— 注册 / 登录唯一性依据
+  - `auth_attempts(id, ip, kind, attemptedAt)` —— 滑动窗口限流
+
+### 11.3 临时账号生命周期
+
+- **创建时机**：middleware 检测到 `/api/*` 请求缺 cookie 自动建。`name="访客 {4 位 hex}"`，`email="temp-{uuid}@anon.local"`。
+- **合并**：用户从临时状态注册时，**同事务**执行 `UPDATE tasks SET user_id = new WHERE user_id = temp` → `DELETE FROM users WHERE id = temp`，临时账号下的任务无缝转移。
+- **过期清理**：30 天未访问的临时账号**不在 v1 范围**（见 §15 TODO）。
+
+### 11.4 限流机制
+
+- **存储**：`auth_attempts` 表，serverless 友好。
+- **窗口**：60 秒，阈值 5 次/IP；`register` 与 `login` 共用同一阈值。
+- **取 IP**：`x-forwarded-for[0]` → `x-real-ip` → `"unknown"`。
+- **清理**：每次查询前 DELETE 早于 60s 的记录。
+- **响应**：超限返回 `429 { error: "操作过于频繁，请稍后再试" }`。
+- **日志**：每次 `console.log("[auth] <kind> attempt ip=… email=… ua=…")`。
+
+### 11.5 scheduler 用户隔离
+
+`computeNewTaskStartDate(otherTasks, today)` 接续排期只看**当前用户**的活跃任务。`getScheduledTasksByUser(auth.user.id)` 已在 `/api/tasks/[id]/analyze` 调用处显式过滤，不再跨用户聚合。
 
 ---
 
 ## 12. MCP 服务
 
-`src/lib/mcp/server.ts` 用 `@modelcontextprotocol/sdk` 的 Web Standard Streamable HTTP Transport 定义任务 CRUD 工具；`src/app/api/mcp/route.ts` 处理 GET/POST/DELETE。**无状态模式**（每请求独立），便于 serverless。同样经 `requireAuth` 鉴权（即 demo 用户隔离）。
+`src/lib/mcp/server.ts` 用 `@modelcontextprotocol/sdk` 的 Web Standard Streamable HTTP Transport 定义任务 CRUD 工具；`src/app/api/mcp/route.ts` 处理 GET/POST/DELETE。**无状态模式**（每请求独立），便于 serverless。经 `requireAuth` 鉴权，按调用方 userId 严格过滤数据。
 
 ---
 
@@ -212,9 +257,23 @@ bun run db:studio        # Drizzle Studio
 ## 15. 已知遗留 / 待清理
 
 - `src/app/layout.tsx` 的 metadata 仍引用 `eazo.ai` 的 favicon 与 `openGraph.siteName: "Eazo"`，品牌未完全切换为「拾级」。
-- `bun run cleanup:demo` 指向已删除的 `scripts/cleanup-demo.ts`，不可用。
 - PRD.md 与旧 AGENTS 描述「SSE 流式分析」，但当前后端为**缓冲 JSON**（见第 8 节）；前端分析面板以 JSON 结果驱动。
 - 界面文案目前为中文硬编码，i18n 仅保留脚手架（`en-US` / `zh-CN`），未全面接入 `t()`。
+
+### 15.1 认证 / 账号系统 TODO（不在 v1 范围）
+
+- 临时账号 30 天过期清理脚本（定期 cron 扫描 `passwordHash = ''` 且 `updatedAt < NOW() - INTERVAL '30 days'` 的行）
+- JWT 撤销列表（用户主动注销已签发 token，演示版可接受"复制 cookie 在 30 天内仍可用"）
+- Turnstile / hCaptcha 等 CAPTCHA（防自动化撞库 + 自动化注册）
+- 邮箱验证邮件发送（注册时验证邮箱有效性）
+- 密码找回 / 重置流程
+- 第三方 OAuth（Google / GitHub）
+- 服务端 IP 黑白名单
+- 账号删除 / 数据导出（GDPR 合规）
+- 多设备会话管理（"踢出其他设备"）
+- 密码强度策略（最少长度、字符种类要求）
+- 登录失败次数到达阈值后锁定账号
+- 双因素认证
 
 ---
 

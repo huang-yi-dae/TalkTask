@@ -1,28 +1,25 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { upsertUser } from "@/lib/db/queries";
 
 /**
  * GET /api/user/profile
- * Decrypts the x-eazo-session header and returns the authenticated user's profile.
- * Works for both Eazo Mobile and Web — both send the same encrypted session shape.
- * Also upserts the user into the local DB so user info is always up to date.
+ *
+ * Self-hosted mode: profile 信息已经在根布局 RSC 阶段被注入客户端，本路由
+ * 主要供客户端组件"二次拉取"（例如刷新页面或登录态变更）。底层走
+ * `requireAuth` 解出当前用户后直接返回。
  */
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if (!auth.ok) return auth.response;
-
   const { user } = auth;
 
-  // Upsert in the background — don't block the response on DB latency.
-  upsertUser({
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    avatarUrl: user.avatarUrl,
-  }).catch((err) => {
-    console.error("[profile] upsertUser failed", err);
+  return NextResponse.json({
+    ok: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
+    },
   });
-
-  return NextResponse.json({ ok: true, user });
 }

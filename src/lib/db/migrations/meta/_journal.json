@@ -29,6 +29,13 @@
       "when": 1786101008174,
       "tag": "0003_bloom_persist",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786200000000,
+      "tag": "0004_auth_user_fields",
+      "breakpoints": true
     }
   ]
 }

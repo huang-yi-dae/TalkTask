@@ -189,3 +189,9 @@ dist
 
 # End of https://www.toptal.com/developers/gitignore/api/nextjs,node,linux
 /generated/prisma
+
+# Local planning / scratch / one-off scripts (not part of product)
+/.scratch/
+/.workbuddy/
+/gen_brief.py
+/gradus.md

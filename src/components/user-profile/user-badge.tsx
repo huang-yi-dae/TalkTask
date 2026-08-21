@@ -1,18 +1,18 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, type ReactNode } from "react";
 import Image from "next/image";
 import { LogOut, UserRound, X } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { auth } from "@/lib/eazo-shim";
-import { useEazo } from "@/lib/eazo-shim";
+import { auth, useEazo } from "@/lib/eazo-shim";
 import type { User } from "@/lib/eazo-shim";
+import { AuthModal } from "@/components/auth/auth-modal";
 
 export function UserBadge() {
-  const { t } = useTranslation();
   const user = useEazo((s) => s.auth.user);
   const loading = useEazo((s) => s.auth.loading);
   const [open, setOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,33 +32,53 @@ export function UserBadge() {
   }
 
   if (!user) {
+    // 未登录：显示"注册 / 登录"按钮，触发 modal
     return (
-      <button
-        onClick={() => {
-          auth.login().catch(() => undefined);
-        }}
-        className="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-medium shadow-sm transition-shadow hover:shadow-md"
-      >
-        <UserRound className="h-4 w-4 text-muted-foreground" />
-        {t("common.signIn")}
-      </button>
+      <>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => {
+              setAuthMode("login");
+              setAuthOpen(true);
+            }}
+            className="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-medium shadow-sm transition-shadow hover:shadow-md"
+          >
+            <UserRound className="h-4 w-4 text-muted-foreground" />
+            登录
+          </button>
+          <button
+            onClick={() => {
+              setAuthMode("register");
+              setAuthOpen(true);
+            }}
+            className="rounded-full bg-foreground px-3 py-1.5 text-sm font-medium text-background shadow-sm transition-opacity hover:opacity-90"
+          >
+            注册
+          </button>
+        </div>
+        <AuthModal
+          open={authOpen}
+          initialMode={authMode}
+          onClose={() => setAuthOpen(false)}
+        />
+      </>
     );
   }
 
   return (
     <div ref={ref} className="relative">
-      <BadgeTrigger user={user} onClick={() => setOpen((v) => !v)} />
+      <BadgeTrigger user={user} onClick={() => setOpen((v: boolean) => !v)} />
       {open && (
-        <DropdownPanel user={user} onClose={() => setOpen(false)} userIdLabel={t("common.userId")}>
+        <DropdownPanel user={user} onClose={() => setOpen(false)} userIdLabel="用户 ID">
           <button
-            onClick={() => {
-              auth.logout();
+            onClick={async () => {
               setOpen(false);
+              await auth.logout();
             }}
             className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <LogOut className="h-3.5 w-3.5" />
-            {t("common.signOut")}
+            退出
           </button>
         </DropdownPanel>
       )}
@@ -89,7 +109,7 @@ function DropdownPanel({
   user: User;
   onClose: () => void;
   userIdLabel: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <div className="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-xl border border-border bg-background shadow-lg">

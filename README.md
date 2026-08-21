@@ -68,21 +68,31 @@ cp .env.example .env
 | 变量 | 必填 | 说明 |
 |---|---|---|
 | `DATABASE_URL` | ✅ | PostgreSQL 连接串（推荐用 Neon 的 `-pooler` 串避免连接数打满） |
+| `AUTH_SECRET` | ✅ | JWT (HS256) 签名密钥，**必须 ≥ 32 字符**；缺失时启动直接报错 |
 | `EAZO_AI_PROVIDER_MODE` | ✅ | 设为 `byok` 走自有密钥 |
 | `AI_PROVIDER_BASE_URL` | ✅ | 写到 `/v1` 这一层，如 `https://api.deepseek.com/v1` |
 | `AI_PROVIDER_API_KEY` | ✅ | 模型服务 API Key |
 | `AI_PROVIDER_MODEL` | ✅ | 模型名，如 `deepseek-chat` |
 | `TAVILY_API_KEY` | ❌ | 缺省时资源检索降级为「仅搜索」模式（点击资源跳搜索引擎） |
-| `NEXT_PUBLIC_DEMO_USER_ID` / `NAME` / `EMAIL` | ❌ | 自托管无登录态，固定演示用户 |
 | `NEXT_PUBLIC_APP_TITLE` / `NEXT_PUBLIC_APP_DESCRIPTION` | ❌ | 站点标题 / 描述 |
 | `CRON_SECRET` | ❌ | Vercel Cron 回调的 Bearer 鉴权密钥 |
 
-> 注意：自托管模式下没有真实登录态，所有访客都以同一个「demo 用户」身份读写数据。
+### 认证与环境变量
+
+拾级使用 JWT cookie 鉴权（`jose` + HS256），session 名为 `__Host-session`。完整流程见 [AGENTS.md §11](./AGENTS.md)。
+
+- **必填**：`AUTH_SECRET`，**必须 ≥ 32 字符**。缺失或过短时模块加载阶段就抛错并拒绝启动。
+  ```bash
+  openssl rand -hex 32
+  ```
+  把生成值粘到 `.env` 的 `AUTH_SECRET=` 行。
+- 演示版不做邮箱验证、密码找回、JWT 撤销列表、Turnstile —— 见 [AGENTS.md §15](./AGENTS.md) 的 TODO 列表。
 
 ### 初始化数据库
 
 ```bash
 bun run db:push      # 或 bun run db:migrate
+bun run db:migrate-demo   # 一键清理旧的 demo 用户痕迹（可选）
 ```
 
 ### 本地运行
@@ -105,8 +115,7 @@ bun dev
 | `bun run db:migrate` | 执行迁移 |
 | `bun run db:push` | 直接把 schema 同步到数据库 |
 | `bun run db:studio` | 打开 Drizzle Studio |
-
-> ⚠️ 模板遗留的 `bun run cleanup:demo` 在当前仓库已无对应脚本（目标 `scripts/cleanup-demo.ts` 不存在），请勿使用。
+| `bun run db:migrate-demo` | 一键迁移/清理 demo 用户数据（详见 `scripts/migrate-demo-data.ts`） |
 
 ## AI 任务规划流程
 
