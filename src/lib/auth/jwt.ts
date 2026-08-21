@@ -1,9 +1,5 @@
 import { jwtVerify, SignJWT } from "jose";
-import { AUTH_SECRET, AUTH_SESSION_MAX_AGE_SECONDS } from "./env";
-
-// 强制先加载 env.ts 的 assert —— 这一行的存在让任何 jwt.ts 的 import
-// 都先校验 AUTH_SECRET。如果 import 顺序被破坏，env.ts 仍是最先执行的。
-export { AUTH_SECRET } from "./env";
+import { getAuthSecret, AUTH_SESSION_MAX_AGE_SECONDS } from "./env";
 
 /**
  * JWT 负载结构。
@@ -31,7 +27,7 @@ export interface DecodedSession extends SessionPayload {
  */
 export async function signSession(payload: SessionPayload): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  const secret = new TextEncoder().encode(AUTH_SECRET);
+  const secret = new TextEncoder().encode(getAuthSecret());
 
   return await new SignJWT({ name: payload.name, email: payload.email })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
@@ -49,7 +45,7 @@ export async function signSession(payload: SessionPayload): Promise<string> {
  */
 export async function verifySession(token: string): Promise<DecodedSession | null> {
   try {
-    const secret = new TextEncoder().encode(AUTH_SECRET);
+    const secret = new TextEncoder().encode(getAuthSecret());
     const { payload } = await jwtVerify(token, secret, { algorithms: ["HS256"] });
 
     if (

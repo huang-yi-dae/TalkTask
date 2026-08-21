@@ -4,10 +4,12 @@
  * `AUTH_SECRET` 是 JWT 签发 / 校验的 HS256 密钥。它**必须存在**且**≥ 32 字符**，
  * 否则一旦发布到生产环境就会被攻击者伪造 token——这是最危险的安全事故之一。
  *
- * 实现策略：
- *   - 模块加载时同步 assert；失败抛错并打印明确指引（含生成命令）。
- *   - 在所有其他 auth 子模块（jwt/cookie/temp-account/current-user）import 之前
- *     先 import 此模块，确保启动期就触发校验。
+ * 实现策略（刻意**惰性**，非模块加载时校验）：
+ *   - 只有在真正要签名 / 校验 JWT 时才 resolve 并校验，避免在构建期
+ *     （`next build` 收集页面数据时）因缺少该变量而把整个构建打断——
+ *     因为 `AUTH_SECRET` 这类密钥通常只注入到**运行时**环境，构建镜像本身不持有。
+ *   - 通过 `getAuthSecret()` 在请求路径上触发；缺失/过短会在首个需要签名的
+ *     请求上抛出，并打印明确指引（含生成命令）。
  *   - 测试/REPL 场景如果想跳过校验，可设 `AUTH_SECRET_ALLOW_INSECURE=1`，
  *     此时 secret 会被替换为一个稳定的本地占位串。**仅供本地手测。**
  */
@@ -43,13 +45,20 @@ function resolveSecret(): string {
   );
 }
 
-// 模块级 eager 校验（import 即跑），避免运行时才抛。
-const cached = globalThis.__authSecret ?? (globalThis.__authSecret = resolveSecret());
+/**
+ * 惰性解析并校验 `AUTH_SECRET`。
+ * 仅在真正需要（签名/校验 JWT）时调用；结果按进程缓存。
+ */
+export function getAuthSecret(): string {
+  if (globalThis.__authSecret === undefined) {
+    globalThis.__authSecret = resolveSecret();
+  }
+  return globalThis.__authSecret;
+}
 
-export const AUTH_SECRET: string = cached;
 export const AUTH_COOKIE_NAME = "__Host-session";
 export const AUTH_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 天
 
 export function requireAuthSecret(): string {
-  return AUTH_SECRET;
+  return getAuthSecret();
 }
