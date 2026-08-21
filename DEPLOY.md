@@ -111,7 +111,7 @@ NEXT_PUBLIC_APP_TITLE     拾级 · 学习规划智能体
 ```
 
 > `AUTH_SECRET` 与 `EAZO_AI_PROVIDER_MODE=byok` 两条**必填**。
-> `AUTH_SECRET` 缺失/过短会直接启动报错；`EAZO_AI_PROVIDER_MODE` 漏了会走已废弃的平台代理并报
+> `AUTH_SECRET` 是**惰性校验**：`next build` 即使没有它也能通过，但运行时缺失/过短会让签名相关请求 503；所以必须配。`EAZO_AI_PROVIDER_MODE` 漏了会走已废弃的平台代理并报
 > "BYOK AI provider is not configured"。
 
 5. Deploy → 等 2-3 分钟
@@ -167,7 +167,7 @@ NEXT_PUBLIC_APP_TITLE     拾级 · 学习规划智能体
 认证详细模型见 [AGENTS.md §11](./AGENTS.md#11-认证模型自托管) 与 [AGENTS.md §15.1](./AGENTS.md#151-认证--账号系统-todo不在-v1-范围)；
 设计文档在 [docs/plans/2026-08-14-multi-user-isolation.md](./docs/plans/2026-08-14-multi-user-isolation.md)。
 
-**部署前必做**：在 Vercel Environment Variables 里加 `AUTH_SECRET`（`openssl rand -hex 32` 生成）。
+**部署前必做**：在 Vercel Environment Variables 里加 `AUTH_SECRET`（`openssl rand -hex 32` 生成）。校验是惰性的，构建期不报错，但运行时缺它会导致鉴权请求 503——务必配置。
 **Vercel 首次部署后**：跑一次 `bun run db:migrate-demo`，把遗留的 demo 用户数据迁到保留账号（演示版可能有过 `demo@autotask.app` 的旧任务）。
 
 **注意**：演示版不做邮箱验证、密码找回、JWT 撤销、Turnstile —— 黑客松演示够用，

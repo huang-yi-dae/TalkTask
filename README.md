@@ -68,7 +68,7 @@ cp .env.example .env
 | 变量 | 必填 | 说明 |
 |---|---|---|
 | `DATABASE_URL` | ✅ | PostgreSQL 连接串（推荐用 Neon 的 `-pooler` 串避免连接数打满） |
-| `AUTH_SECRET` | ✅ | JWT (HS256) 签名密钥，**必须 ≥ 32 字符**；缺失时启动直接报错 |
+| `AUTH_SECRET` | ✅ | JWT (HS256) 签名密钥，**必须 ≥ 32 字符**；缺失时首个签名/校验请求报错（构建期不校验） |
 | `EAZO_AI_PROVIDER_MODE` | ✅ | 设为 `byok` 走自有密钥 |
 | `AI_PROVIDER_BASE_URL` | ✅ | 写到 `/v1` 这一层，如 `https://api.deepseek.com/v1` |
 | `AI_PROVIDER_API_KEY` | ✅ | 模型服务 API Key |
@@ -81,7 +81,7 @@ cp .env.example .env
 
 拾级使用 JWT cookie 鉴权（`jose` + HS256），session 名为 `__Host-session`。完整流程见 [AGENTS.md §11](./AGENTS.md)。
 
-- **必填**：`AUTH_SECRET`，**必须 ≥ 32 字符**。缺失或过短时模块加载阶段就抛错并拒绝启动。
+- **必填**：`AUTH_SECRET`，**必须 ≥ 32 字符**。校验是**惰性**的——仅在首次签发/校验 JWT 时触发（按进程缓存），因此 `next build` 即使没有该变量也能通过；但若运行时缺失/过短，相关请求会 503。务必在 Vercel Environment Variables 里配好。
   ```bash
   openssl rand -hex 32
   ```

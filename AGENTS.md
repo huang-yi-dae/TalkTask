@@ -101,7 +101,7 @@ bun run db:studio        # Drizzle Studio
 
 ## 5. 环境变量
 
-见 [.env.example](./.env.example)。**必填**：`DATABASE_URL`、`AUTH_SECRET`（≥ 32 字符；缺失即启动报错）、`EAZO_AI_PROVIDER_MODE=byok`、`AI_PROVIDER_BASE_URL`、`AI_PROVIDER_API_KEY`、`AI_PROVIDER_MODEL`。**可选**：`TAVILY_API_KEY`、`NEXT_PUBLIC_APP_TITLE/DESCRIPTION`、`CRON_SECRET`。生成命令：`openssl rand -hex 32`。
+见 [.env.example](./.env.example)。**必填**：`DATABASE_URL`、`AUTH_SECRET`（≥ 32 字符；**惰性校验**——构建期不报错，仅运行时首次签发/校验 JWT 时强制，缺失则相关请求 503）、`EAZO_AI_PROVIDER_MODE=byok`、`AI_PROVIDER_BASE_URL`、`AI_PROVIDER_API_KEY`、`AI_PROVIDER_MODEL`。**可选**：`TAVILY_API_KEY`、`NEXT_PUBLIC_APP_TITLE/DESCRIPTION`、`CRON_SECRET`。生成命令：`openssl rand -hex 32`。
 
 ---
 
@@ -200,7 +200,7 @@ bun run db:studio        # Drizzle Studio
 
 ### 11.2 协议与存储
 
-- **JWT + HMAC-SHA256**（`jose` 库），过期 30 天；密钥 `AUTH_SECRET`，**≥ 32 字符，缺失即启动报错**。
+- **JWT + HMAC-SHA256**（`jose` 库），过期 30 天；密钥 `AUTH_SECRET`，**≥ 32 字符，惰性校验（仅首次签名/校验时强制，缺失则 503，不影响构建）**。
 - **Cookie** 名称 `__Host-session`，`httpOnly`、`SameSite=Lax`、`Path=/`、`Max-Age=30d`；`Secure` 仅在生产环境启用。
 - **密码 hash** 用 `bcryptjs` cost=10；临时账号 `passwordHash = ""`。
 - **数据模型**（`users` 表新增两列 + 一张限流表）：

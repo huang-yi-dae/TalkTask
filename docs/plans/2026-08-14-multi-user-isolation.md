@@ -58,7 +58,8 @@
 
 ### 部署与运维
 
-19. As a **运维人员**, I want to **项目启动时如果没有 AUTH_SECRET 就直接报错**, so that **不会出现"忘记配 secret 导致 JWT 被人伪造"的事故**。
+19. As a **运维人员**, I want to **没有正确配置 AUTH_SECRET 时直接报错**, so that **不会出现"忘记配 secret 导致 JWT 被人伪造"的事故**。
+    > 实现注记：校验为**惰性**——仅在首次签发/校验 JWT 时触发（而非模块加载/构建期），因此 `next build` 即使缺变量也能通过；运行时缺失/过短则相关请求 503。设计目标（防伪造）不变。
 20. As a **运维人员**, I want to **限流数据存在数据库而不是内存**, so that **Vercel Serverless 冷启动不会让限流形同虚设**。
 
 ---
@@ -77,7 +78,7 @@
 - **JWT + HMAC-SHA256**（HS256），无服务端 session 表，serverless 友好。
 - **JWT 负载**：`{ sub: userId, name, email, iat, exp }`。
 - **过期时间**：30 天。配合"滑动续期"——任何受保护请求的 cookie Max-Age 都会被刷成 30 天。
-- **签名密钥**：环境变量 `AUTH_SECRET`（≥ 32 字符），缺失即启动失败。
+- **签名密钥**：环境变量 `AUTH_SECRET`（≥ 32 字符），**惰性校验**——缺失/过短在首次签发/校验时才报错（构建期不报错）。
 - **JWT 库**：`jose`（Web 标准、零依赖），**不**用 `jsonwebtoken`。
 - **密码 hash**：`bcryptjs`（pure JS，避免 native binding 问题），cost=10。
 - **Cookie**：
@@ -147,7 +148,7 @@
 - **AGENTS.md §11** 整段改写：从"无登录态 / 演示用户" 改为完整描述新模型（JWT cookie、临时账号、注册合并、限流、scheduler 用户隔离）。
 - **AGENTS.md §7** 路由表鉴权列从"demo 用户"改成"已登录用户 / 公开(限流) / Bearer Cron"。
 - **AGENTS.md §15** 增加 TODO：临时账号 30 天清理、撤销列表、Turnstile。
-- **README.md** 增加「认证与环境变量」小节：`AUTH_SECRET` 必须 ≥ 32 字符，缺失时启动报错；给出生成命令 `openssl rand -hex 32`。
+- **README.md** 增加「认证与环境变量」小节：`AUTH_SECRET` 必须 ≥ 32 字符（惰性校验，缺失时运行时 503 而非构建报错）；给出生成命令 `openssl rand -hex 32`。
 - **.env.example** 删除 `NEXT_PUBLIC_DEMO_USER_ID/NAME/EMAIL` 三件套；新增 `AUTH_SECRET`（带生成说明）。
 
 ### 一次性切换策略

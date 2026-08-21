@@ -900,7 +900,7 @@ animation: `ganttGrow 0.9s cubic-bezier(.2,.8,.2,1) ${i * 0.12}s both`
 | 变量 | 必填 | 说明 |
 |---|---|---|
 | `DATABASE_URL` | ✅ | PostgreSQL 连接串（自托管时自配） |
-| `AUTH_SECRET` | ✅ | JWT (HS256) 签名密钥，**≥ 32 字符**；缺失即启动报错。`openssl rand -hex 32` 生成 |
+| `AUTH_SECRET` | ✅ | JWT (HS256) 签名密钥，**≥ 32 字符**；**惰性校验**——构建期不报错，仅运行时首次签发/校验 JWT 时强制，缺失则相关请求 503。`openssl rand -hex 32` 生成 |
 | `EAZO_AI_PROVIDER_MODE` | ✅ | 自托管默认 `byok` |
 | `AI_PROVIDER_BASE_URL` / `AI_PROVIDER_API_KEY` / `AI_PROVIDER_MODEL` | ✅ | byok 模式下必填 |
 | `NEXT_PUBLIC_APP_TITLE` | ❌ | App 标题（默认 拾级） |
