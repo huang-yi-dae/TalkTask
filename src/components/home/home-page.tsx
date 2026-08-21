@@ -15,6 +15,7 @@ import type { SubtaskWithTask } from "@/lib/api/tasks";
 import { AchievementPanel, LevelBadge } from "./achievement-panel";
 import { RightPanel, useAnalysisPanel } from "./right-panel";
 import { NewTaskInput } from "./new-task-input";
+import { UserBadge } from "@/components/user-profile/user-badge";
 import { getSubtaskActualDates } from "./subtask-row";
 import { TimelineCard, TimelineSectionHeader } from "./timeline-card";
 import { SubtaskDetailModal } from "./subtask-detail-modal";
@@ -347,8 +348,7 @@ export function HomePage() {
           {user && subtaskRows.length > 0 && <LevelBadge refreshTick={streakTick} />}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {!authLoading && !user && <button onClick={() => auth.login().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: `1px solid ${T.line}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}>{t("common.signIn")}</button>}
-          {user && <button onClick={() => auth.logout().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: "none", cursor: "pointer" }}>{t("common.signOut")}</button>}
+          <UserBadge />
           <button onClick={() => setShowInput(true)}
             style={{ background: T.accent, color: "#fff", border: "none", borderRadius: 10, padding: "8px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 400 }}>+</span> {t("home.newTask")}

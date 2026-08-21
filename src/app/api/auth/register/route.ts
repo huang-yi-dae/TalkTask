@@ -125,8 +125,10 @@ export async function POST(request: NextRequest) {
       );
     }
     console.error("[auth] register transaction failed:", err);
+    const message =
+      (err instanceof Error ? err.message : String(err)) || "注册失败，请稍后再试";
     return NextResponse.json(
-      { error: "注册失败，请稍后再试" },
+      { error: "注册失败，请稍后再试", detail: message },
       { status: 500 },
     );
   }
