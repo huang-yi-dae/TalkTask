@@ -24,16 +24,6 @@ export function AuthModal({
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (open) {
-      setMode(initialMode);
-      setName("");
-      setEmail("");
-      setPassword("");
-      setShowPwd(false);
-    }
-  }, [open, initialMode]);
-
   // ESC 关闭 modal
   useEffect(() => {
     if (!open) return;

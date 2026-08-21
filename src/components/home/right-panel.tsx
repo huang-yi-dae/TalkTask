@@ -319,8 +319,13 @@ export function RightPanel({ entries, focusedId, setFocusedId, regenAnalysis, re
 
   // 有正在运行的 entry 时自动展开
   const hasActive = entries.some(e => e.stream.phase !== "idle" && e.stream.phase !== "done" && e.stream.phase !== "error");
+  // 任务开始分析时自动展开面板：这是"外部状态变化 → 展开"的响应式同步，
+  // 必须在 effect 中完成（触发点在别的组件，无法放到事件处理器里），故此处
+  // 的 setState 是合法的响应式同步，用块级禁用对应规则。
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (hasActive) { setCollapsed(false); if (isMobile) setSheetOpen(true); }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [hasActive, isMobile]);
 
   // 运行中的任务数量（用于移动端底部条角标）

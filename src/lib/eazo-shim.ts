@@ -91,7 +91,7 @@ export function useEazo<T>(selector: (s: EazoState) => T): T {
  */
 export const auth = {
   get user(): User | null {
-    return adaptUser(useCurrentUserSafe());
+    return adaptUser(readCurrentUserSnapshot());
   },
 
   async getSessionHeader(): Promise<string | null> {
@@ -137,7 +137,8 @@ export const auth = {
 
 // 在模块顶层（非 React 上下文）也能读出当前 user——通过 import 自
 // user-provider 的内部状态。`useCurrentUser()` 仅供组件调用。
-function useCurrentUserSafe(): CurrentUserView | null {
+// 注意：此函数不以 `use` 开头，因为它不是 React Hook，只是读取模块级快照。
+function readCurrentUserSnapshot(): CurrentUserView | null {
   return getCurrentUserSnapshot();
 }
 

@@ -75,7 +75,10 @@ export function UserProvider({
   // 会触发"SSR null vs client null"的不一致错误。实际上 React 的
   // "use client" 文件 SSR 渲染时，模块级 moduleUser 已经被 provider 上面
   // 别的实例同步过；这里只是兜底。
+  // 该赋值发生在 render 期是故意的（确保首次客户端渲染与 SSR 一致，避免
+  // hydration mismatch），并非副作用 bug，故在赋值处禁用对应规则。
   if (typeof window !== "undefined" && moduleUser === null && user !== null) {
+    // eslint-disable-next-line react-hooks/globals
     moduleUser = user;
   }
 

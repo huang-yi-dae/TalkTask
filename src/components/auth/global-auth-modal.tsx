@@ -22,11 +22,11 @@ export function GlobalAuthModal() {
     return () => registerOpenAuth(null);
   }, []);
 
-  return (
+  return open ? (
     <AuthModal
-      open={open}
+      open
       initialMode={mode}
       onClose={() => setOpen(false)}
     />
-  );
+  ) : null;
 }
