@@ -19,7 +19,7 @@
 
 - **`src/lib/eazo-shim.ts`** — 替换 `@eazo/sdk/react`：
   - `EazoProvider`：纯 passthrough（直接返回 children）。
-  - `auth`：单例，**代理到 `/api/auth/login` / `/api/auth/logout` / `/api/auth/me`**；`login()` / `logout()` 不再是 no-op。
+  - `auth`：单例。`login(mode?)` 触发全局 `<AuthModal>`（注册/登录弹窗），不再直接发网络请求；`logout()` 调 `/api/auth/logout` 并清本地 user；`refresh()` 重新拉 `/api/auth/me` 同步 user。
   - `memory`：`reportAction()` 为 no-op（平台长期记忆在站外不可用）。
   - `useEazo(selector)`：从 `<UserProvider>` 读真实 user。
   - **真实登录态**：每个访客都是 JWT cookie 解析出的独立 user；没有 cookie 时由 middleware 兜底建临时账号。
@@ -54,7 +54,7 @@ src/
       notifications/cron/daily-digest/route.ts   Vercel Cron 每日提醒
       notifications/test/route.ts    测试推送
   components/
-    auth/        auth-modal
+    auth/        auth-modal / global-auth-modal（全局唯一登录注册弹窗，挂载于 layout）
     home/        home-page / new-task-input / subtask-row / subtask-detail-modal / congrats-modal / right-panel
     task/        gantt-chart / task-detail-page-v2
     history/     history-page

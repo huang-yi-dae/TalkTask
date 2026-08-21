@@ -124,9 +124,9 @@ NEXT_PUBLIC_APP_TITLE     拾级 · 学习规划智能体
 
 | 检查项 | 怎么看 |
 |---|---|
-| 首页能打开、右上角显示「访客 abcd」临时徽章 | 直接访问（DevTools Network 应看到 `__Host-session` cookie 被设上） |
+| 首页能打开、右上角显示「登录 / 注册」按钮（访客无需注册即可建任务） | 直接访问（DevTools Network 应看到 `__Host-session` cookie 被设上） |
 | 临时账号下能正常建任务并跑完 4 阶段 | 输入「两周内学会 React 基础」 |
-| 临时账号 → 注册正式账号，任务自动归属到新账号 | 点徽章 → 注册 → 原任务仍在 |
+| 临时账号 → 注册正式账号，任务自动归属到新账号 | 点「注册」→ 注册后原任务仍在；刷新后右上角徽章显示正式账号 |
 | 数据真的落库 | Neon Dashboard → Tables → tasks 有行 |
 | 函数没超时 | Vercel → Deployments → Functions 日志无 `FUNCTION_INVOCATION_TIMEOUT` |
 

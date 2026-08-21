@@ -1028,7 +1028,7 @@ Mount `EazoProvider` once at the root layout. Also mount `UserSyncEffect` inside
 ```ts
 // 客户端
 useEazo((s) => s.auth.user)        // → User（来自 RSC 注入的 <UserProvider>）
-auth.login(email, password)          // → 已变为 no-op（实际登录走 <AuthModal>）
+auth.login(mode?)                    // → 打开全局 <AuthModal>（mode: "login" | "register"）
 auth.logout()                        // → POST /api/auth/logout + 清本地 user
 auth.refresh()                       // → 重新拉 /api/auth/me，更新 store
 ```
