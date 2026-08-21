@@ -51,6 +51,19 @@ type EazoState = {
   device: { platform: "web" | "mobile" };
 };
 
+// ── 全局"打开登录/注册弹窗"的注册点 ──────────────────────────────────
+// 旧的 `auth.login()` 调用点遍布各页面（header / task-detail / history /
+// 未登录提示区），但它们无法直接渲染 React 弹窗。改为：由全局唯一挂载的
+// `<GlobalAuthModal>` 在挂载时注册一个处理器，`auth.login()` 调用它来打开
+// 弹窗。这样所有旧调用点无需改动即可重新生效。
+type OpenAuthHandler = (mode?: "login" | "register") => void;
+let openAuthHandler: OpenAuthHandler | null = null;
+
+/** 由 <GlobalAuthModal> 注册/注销弹窗打开处理器。 */
+export function registerOpenAuth(handler: OpenAuthHandler | null): void {
+  openAuthHandler = handler;
+}
+
 /**
  * Selector hook — preserves the existing @eazo/sdk/react API surface
  * (`useEazo((s) => s.auth.user)`) so we don't have to rewrite every
@@ -87,9 +100,11 @@ export const auth = {
     return null;
   },
 
-  async login(_email?: string, _password?: string): Promise<void> {
-    // Login is performed by the dedicated AuthModal flow; calling `auth.login()`
-    // directly is now a no-op (kept for API compatibility with old code paths).
+  async login(mode: "login" | "register" = "login"): Promise<void> {
+    // 实际登录走 <AuthModal>：通过全局注册的处理器打开弹窗，让所有
+    // 旧的 `auth.login()` 调用点（header / task-detail / history 等）无需
+    // 改动即可弹出登录/注册弹窗。
+    openAuthHandler?.(mode);
   },
 
   async logout(): Promise<void> {

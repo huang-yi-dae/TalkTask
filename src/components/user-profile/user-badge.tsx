@@ -5,14 +5,11 @@ import Image from "next/image";
 import { LogOut, UserRound, X } from "lucide-react";
 import { auth, useEazo } from "@/lib/eazo-shim";
 import type { User } from "@/lib/eazo-shim";
-import { AuthModal } from "@/components/auth/auth-modal";
 
 export function UserBadge() {
   const user = useEazo((s) => s.auth.user);
   const loading = useEazo((s) => s.auth.loading);
   const [open, setOpen] = useState(false);
-  const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,36 +29,23 @@ export function UserBadge() {
   }
 
   if (!user) {
-    // 未登录：显示"注册 / 登录"按钮，触发 modal
+    // 未登录：显示"注册 / 登录"按钮，触发全局 AuthModal
     return (
-      <>
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => {
-              setAuthMode("login");
-              setAuthOpen(true);
-            }}
-            className="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-medium shadow-sm transition-shadow hover:shadow-md"
-          >
-            <UserRound className="h-4 w-4 text-muted-foreground" />
-            登录
-          </button>
-          <button
-            onClick={() => {
-              setAuthMode("register");
-              setAuthOpen(true);
-            }}
-            className="rounded-full bg-foreground px-3 py-1.5 text-sm font-medium text-background shadow-sm transition-opacity hover:opacity-90"
-          >
-            注册
-          </button>
-        </div>
-        <AuthModal
-          open={authOpen}
-          initialMode={authMode}
-          onClose={() => setAuthOpen(false)}
-        />
-      </>
+      <div className="flex items-center gap-1.5">
+        <button
+          onClick={() => auth.login("login")}
+          className="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-medium shadow-sm transition-shadow hover:shadow-md"
+        >
+          <UserRound className="h-4 w-4 text-muted-foreground" />
+          登录
+        </button>
+        <button
+          onClick={() => auth.login("register")}
+          className="rounded-full bg-foreground px-3 py-1.5 text-sm font-medium text-background shadow-sm transition-opacity hover:opacity-90"
+        >
+          注册
+        </button>
+      </div>
     );
   }
 

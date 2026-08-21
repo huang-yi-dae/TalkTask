@@ -349,7 +349,7 @@ export function HomePage() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {!authLoading && !user && <button onClick={() => auth.login().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: `1px solid ${T.line}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}>{t("common.signIn")}</button>}
           {user && <button onClick={() => auth.logout().catch(() => {})} style={{ color: T.muted, fontSize: 13, background: "none", border: "none", cursor: "pointer" }}>{t("common.signOut")}</button>}
-          <button onClick={() => { if (!user) { auth.login().catch(() => {}); return; } setShowInput(true); }}
+          <button onClick={() => setShowInput(true)}
             style={{ background: T.accent, color: "#fff", border: "none", borderRadius: 10, padding: "8px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 16, lineHeight: 1, fontWeight: 400 }}>+</span> {t("home.newTask")}
           </button>
@@ -383,11 +383,6 @@ export function HomePage() {
                   {t("home.loadError.retry")}
                 </button>
               </div>
-            ) : !user ? (
-              <div style={{ color: T.muted, fontSize: 13, padding: "60px 10px", textAlign: "center" }}>
-                <div style={{ marginBottom: 12 }}>{t("home.signedOut.prompt")}</div>
-                <button onClick={() => auth.login().catch(() => {})} style={{ background: T.accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 13, cursor: "pointer" }}>{t("common.signIn")}</button>
-              </div>
             ) : sections.every(s => s.rows.length === 0) ? (
               <motion.div
                 initial="hidden"
@@ -410,7 +405,7 @@ export function HomePage() {
                   ].map((ex) => (
                     <button
                       key={ex.label}
-                      onClick={() => { if (!user) { auth.login().catch(() => {}); return; } startAnalysis(ex.value); }}
+                      onClick={() => startAnalysis(ex.value)}
                       style={{
                         display: "flex", alignItems: "center", gap: 8,
                         background: T.surface, border: `1.5px solid ${T.line}`,
@@ -437,7 +432,7 @@ export function HomePage() {
                     </button>
                   ))}
                   <button
-                    onClick={() => { if (!user) { auth.login().catch(() => {}); return; } setShowInput(true); }}
+                    onClick={() => setShowInput(true)}
                     style={{ border: `1px dashed ${T.line}`, borderRadius: 10, padding: "9px 14px", fontSize: 13, color: T.muted, cursor: "pointer", background: "transparent" }}
                   >
                     {t("home.empty.custom")}

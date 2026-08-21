@@ -6,7 +6,7 @@ import { AppAIClientUnavailableError } from "@/lib/api/app-ai-request";
 import { createTask, getTask } from "@/lib/api/tasks";
 import type { TaskWithSubtasks } from "@/lib/api/tasks";
 import type { TrustableResource } from "@/lib/tavily";
-import { memory } from "@/lib/eazo-shim";
+import { memory, auth } from "@/lib/eazo-shim";
 import { openExternalUrl } from "@/lib/safe-url";
 
 // ── 响应式：窄屏（<=640px）判定 ─────────────────────────────────────
@@ -139,6 +139,10 @@ export function useAnalysisPanel() {
 
       clearInterval(ticker);
       patchStream({ phase: "done" });
+      // 匿名访客首次创建任务后，middleware 已兜底建临时账号并下发 cookie，
+      // 但客户端 user 态不会自动刷新。这里主动刷新，让 header / 左栏立即
+      // 反映临时账号并展示刚创建的任务。（已登录用户刷新无害）
+      auth.refresh().catch(() => {});
       const full = await getTask(taskId).catch(() => null);
       setEntries((prev) => prev.map((e) => e.taskId === taskId
         ? { ...e, task: full, taskTitle: json.result!.taskName || e.taskTitle, rawInput: json.result!.rawInput || e.rawInput }

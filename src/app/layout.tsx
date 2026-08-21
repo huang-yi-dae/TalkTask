@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Geist, Geist_Mono } from "next/font/google";
 import { EazoProvider } from "@/lib/eazo-shim";
+import { GlobalAuthModal } from "@/components/auth/global-auth-modal";
 import { cn } from "@/utils/utils";
 import { Toaster } from "@/components/ui/sonner";
 import { I18nProvider } from "@/components/i18n/i18n-provider";
@@ -76,6 +77,7 @@ export default async function RootLayout({
             <EazoProvider>
               <LocaleSyncEffect />
               {children}
+              <GlobalAuthModal />
               <Toaster />
             </EazoProvider>
           </UserProvider>
