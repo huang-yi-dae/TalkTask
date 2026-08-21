@@ -92,7 +92,7 @@ cp .env.example .env
 
 ```bash
 bun run db:push      # 或 bun run db:migrate
-bun run db:migrate-demo   # 一键清理旧的 demo 用户痕迹（可选）
+bun run db:migrate-demo   # 一键迁移/清理旧 demo 用户数据（如有遗留 `demo@autotask.app` 行）
 ```
 
 ### 本地运行

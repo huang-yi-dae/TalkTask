@@ -51,7 +51,7 @@ DATABASE_URL=postgresql://...-pooler.../neondb?sslmode=require
 bun run db:migrate
 ```
 
-成功后表结构（users / tasks / subtasks）就建在 Neon 上了。这一步只需做一次。
+成功后表结构（users / tasks / subtasks / auth_attempts）就建在 Neon 上了。这一步只需做一次。
 
 ---
 
@@ -101,6 +101,7 @@ git push -u origin main
 
 ```
 DATABASE_URL              postgresql://...-pooler.../neondb?sslmode=require
+AUTH_SECRET               <openssl rand -hex 32 生成的随机串，≥ 32 字符>
 EAZO_AI_PROVIDER_MODE     byok
 AI_PROVIDER_BASE_URL      https://api.deepseek.com/v1
 AI_PROVIDER_API_KEY       sk-xxxx
@@ -109,7 +110,8 @@ CRON_SECRET               <openssl rand -hex 32 生成的随机串>
 NEXT_PUBLIC_APP_TITLE     拾级 · 学习规划智能体
 ```
 
-> `EAZO_AI_PROVIDER_MODE=byok` 这条**必填**，漏了会走已废弃的平台代理并报
+> `AUTH_SECRET` 与 `EAZO_AI_PROVIDER_MODE=byok` 两条**必填**。
+> `AUTH_SECRET` 缺失/过短会直接启动报错；`EAZO_AI_PROVIDER_MODE` 漏了会走已废弃的平台代理并报
 > "BYOK AI provider is not configured"。
 
 5. Deploy → 等 2-3 分钟
@@ -122,8 +124,9 @@ NEXT_PUBLIC_APP_TITLE     拾级 · 学习规划智能体
 
 | 检查项 | 怎么看 |
 |---|---|
-| 首页能打开、右上角显示演示用户 | 直接访问 |
-| 建任务能跑完 4 阶段并出甘特图 | 输入「两周内学会 React 基础」 |
+| 首页能打开、右上角显示「访客 abcd」临时徽章 | 直接访问（DevTools Network 应看到 `__Host-session` cookie 被设上） |
+| 临时账号下能正常建任务并跑完 4 阶段 | 输入「两周内学会 React 基础」 |
+| 临时账号 → 注册正式账号，任务自动归属到新账号 | 点徽章 → 注册 → 原任务仍在 |
 | 数据真的落库 | Neon Dashboard → Tables → tasks 有行 |
 | 函数没超时 | Vercel → Deployments → Functions 日志无 `FUNCTION_INVOCATION_TIMEOUT` |
 
@@ -153,15 +156,19 @@ NEXT_PUBLIC_APP_TITLE     拾级 · 学习规划智能体
 
 | 项 | 原来 | 现在 |
 |---|---|---|
-| 登录 | Eazo 平台 OAuth | 固定演示用户，无需登录（`src/lib/eazo-shim.ts`） |
-| 服务端鉴权 | `requireAuth` 验平台 token | 本地 demo 用户 + DB upsert（`src/lib/auth/index.ts`） |
+| 登录 | Eazo 平台 OAuth | 每个访客自动获得临时账号；可选注册/登录正式账号（`src/lib/auth/*` + `src/middleware.ts`） |
+| 服务端鉴权 | `requireAuth` 验平台 token | JWT cookie（`__Host-session`，HS256）+ 临时账号兜底（`src/lib/auth/index.ts`） |
 | AI 分析 | SSE 逐字流式 | 缓冲式 JSON + 客户端阶段动画（规避代理层缓冲问题） |
 | AI 计费 | 走平台代理扣创作者额度 | BYOK 直连你自己的 OpenAI 兼容端点 |
 | 推送通知 | 平台 push 服务 | 端点保留但为空操作（平台能力不可用） |
 | 数据库 | 平台托管 PG | 外接 Neon，连接池按 Serverless 调优 |
 | 定时任务 | 平台调度 | `vercel.json#crons`，每天 17:00 UTC |
 
-演示用户的名字/邮箱可通过 `NEXT_PUBLIC_DEMO_USER_NAME` / `NEXT_PUBLIC_DEMO_USER_EMAIL` 改。
+认证详细模型见 [AGENTS.md §11](./AGENTS.md#11-认证模型自托管) 与 [AGENTS.md §15.1](./AGENTS.md#151-认证--账号系统-todo不在-v1-范围)；
+设计文档在 [docs/plans/2026-08-14-multi-user-isolation.md](./docs/plans/2026-08-14-multi-user-isolation.md)。
 
-**注意**：所有访客共用同一个演示用户，看到的是同一份任务列表。
-黑客松演示够用，但别当多租户产品用。
+**部署前必做**：在 Vercel Environment Variables 里加 `AUTH_SECRET`（`openssl rand -hex 32` 生成）。
+**Vercel 首次部署后**：跑一次 `bun run db:migrate-demo`，把遗留的 demo 用户数据迁到保留账号（演示版可能有过 `demo@autotask.app` 的旧任务）。
+
+**注意**：演示版不做邮箱验证、密码找回、JWT 撤销、Turnstile —— 黑客松演示够用，
+但**别当多租户生产产品**用（见 AGENTS.md §15.1 TODO）。

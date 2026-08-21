@@ -302,7 +302,7 @@ RSC 根布局在 `getCurrentUser()` 阶段直接读 cookie 解出 user，首屏�
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│                 Browser / Eazo Mobile WebView             │
+│                 Browser (any device)                       │
 │  ┌─────────────────────────────────────────────────────┐  │
 │  │  Next.js 16 App (Client Components, React 19)       │  │
 │  │                                                     │  │
@@ -311,45 +311,56 @@ RSC 根布局在 `getCurrentUser()` 阶段直接读 cookie 解出 user，首屏�
 │  │  ├── TimeFilterTabs      (今天/明天/7天/全部)        │  │
 │  │  ├── SubtaskRow × N      (左侧列表行)               │  │
 │  │  ├── SubtaskDetailModal  (单击详情弹窗)             │  │
+│  │  ├── AuthModal           (登录/注册弹窗)            │  │
+│  │  ├── UserBadge           (右上角临时/正式徽章)       │  │
 │  │  ├── CongratulationsModal (全部完成庆祝)            │  │
 │  │  └── RightPanel                                     │  │
-│  │      ├── useAnalysisPanel() Hook (SSE状态机)        │  │
+│  │      ├── useAnalysisPanel() Hook (SSE状态机)      │  │
 │  │      ├── PipelineSteps   (4段进度展示)              │  │
 │  │      ├── EntryDetail × N (每任务详情+资源)          │  │
 │  │      └── ResourceCard    (资源卡片，可点击跳转)      │  │
 │  └──────────────────┬──────────────────────────────────┘  │
 └─────────────────────┼─────────────────────────────────────┘
-                      │ HTTP / SSE (x-eazo-session header)
+                       │ HTTP (Cookie: __Host-session)
 ┌─────────────────────┼─────────────────────────────────────┐
-│  Next.js 16 API Routes (Node.js Server / Vercel Edge)     │
-│                                                           │
-│  POST   /api/tasks                  创建大任务             │
-│  GET    /api/tasks                  列表 (含进度计数)      │
-│  GET    /api/tasks?withSubtasks=1   列表+子任务(面板水化)  │
-│  GET    /api/tasks/:id              单任务+子任务           │
-│  PATCH  /api/tasks/:id              更新 status            │
-│  DELETE /api/tasks/:id              删除(级联)             │
-│  POST   /api/tasks/:id/analyze ◄── 4段SSE Pipeline        │
-│  PATCH  /api/tasks/:id/subtasks/:sid 切换完成状态          │
-│  GET    /api/subtasks               全量子任务+大任务JOIN  │
-│  GET    /api/user/profile           用户 upsert            │
-│  GET/POST/DELETE /api/mcp           MCP Streamable HTTP   │
-│  GET    /api/notifications/cron/daily-digest  Vercel Cron │
-└──────────────────┬──────────────┬──────────────────────────┘
-                   │              │
-          ┌────────┘              └──────────────┐
-          ▼                                      ▼
-┌─────────────────────┐            ┌──────────────────────────┐
-│   PostgreSQL (Eazo  │            │   Eazo AI Gateway        │
-│   Managed DB)       │            │   (Creator Proxy)        │
-│                     │            │   EAZO_APP_AI_API_BASE   │
-│   Tables:           │            │   model: deepseek.v3.2   │
-│   ├── users         │            │   最多 5 × chat() / 请求 │
-│   ├── tasks         │            └──────────────────────────┘
-│   └── subtasks      │
-└─────────────────────┘
+│  src/middleware.ts   — 兜底建临时账号 + 滑动续期           │
+│  ┌──────────────────┴──────────────────────────────────┐  │
+│  │  Next.js 16 API Routes (Node.js Server / Vercel)    │  │
+│  │                                                      │  │
+│  │  POST   /api/auth/register   公开(限流, 合并临时账号) │  │
+│  │  POST   /api/auth/login      公开(限流)              │  │
+│  │  POST   /api/auth/logout     清 cookie               │  │
+│  │  GET    /api/auth/me         当前 user                │  │
+│  │  POST   /api/tasks                  创建大任务        │  │
+│  │  GET    /api/tasks                  列表 (含进度计数)  │  │
+│  │  GET    /api/tasks?withSubtasks=1   列表+子任务(面板) │  │
+│  │  GET    /api/tasks/:id              单任务+子任务      │  │
+│  │  PATCH  /api/tasks/:id              更新 status       │  │
+│  │  DELETE /api/tasks/:id              删除(级联)        │  │
+│  │  POST   /api/tasks/:id/analyze ◄── 4段SSE Pipeline │  │
+│  │  PATCH  /api/tasks/:id/subtasks/:sid 切换完成状态     │  │
+│  │  GET    /api/subtasks               全量子任务JOIN    │  │
+│  │  GET    /api/user/profile           当前 user          │  │
+│  │  GET/POST/DELETE /api/mcp           MCP Streamable HTTP│  │
+│  │  GET    /api/notifications/cron/daily-digest  Vercel Cron │
+│  └──────────────────┬──────────────┬─────────────────────┘
+└─────────────────────┼──────────────┼──────────────────────┘
+                      │              │
+            ┌─────────┘              └──────────────┐
+            ▼                                        ▼
+┌────────────────────────┐              ┌─────────────────────────┐
+│   PostgreSQL           │              │   OpenAI-compatible AI  │
+│   (Neon / external)    │              │   (DeepSeek / OpenAI /  │
+│                        │              │    Moonshot / 自建 vLLM) │
+│   Tables:              │              │                         │
+│   ├── users            │              │   AI_PROVIDER_BASE_URL  │
+│   │     + passwordHash │              │   AI_PROVIDER_API_KEY   │
+│   │     + emailLower   │              │   AI_PROVIDER_MODEL     │
+│   ├── tasks            │              │   最多 5 × chat() / 请求 │
+│   ├── subtasks         │              │                         │
+│   └── auth_attempts    │              │  (Tavily 资源检索可选)  │
+└────────────────────────┘              └─────────────────────────┘
 ```
-
 ### 5.2 前端目录结构
 
 ```
@@ -385,7 +396,7 @@ src/
 │
 └── lib/
     ├── api/
-    │   ├── request.ts                fetch 封装（注入 x-eazo-session + locale）
+    │   ├── request.ts                fetch 封装（注入 locale header；session 由浏览器自动附带 cookie）
     │   ├── tasks.ts                  任务相关客户端 API 函数（全类型化）
     │   └── app-ai-request.ts         App AI 402 错误处理
     ├── auth/
@@ -437,7 +448,11 @@ src/
 
 | 方法 | 路径 | 描述 | 认证 | 文件 |
 |---|---|---|---|---|
-| `POST` | `/api/tasks` | 创建大任务 | ✅ | `api/tasks/route.ts` |
+| `POST` | `/api/auth/register` | 注册（限流 + 合并临时账号） | 公开 | `api/auth/register/route.ts` |
+| `POST` | `/api/auth/login` | 登录（限流） | 公开 | `api/auth/login/route.ts` |
+| `POST` | `/api/auth/logout` | 清 cookie | 已登录 | `api/auth/logout/route.ts` |
+| `GET`  | `/api/auth/me` | 当前用户 | 已登录 | `api/auth/me/route.ts` |
+| `POST` | `/api/tasks` | 创建大任务 | 已登录 | `api/tasks/route.ts` |
 | `GET` | `/api/tasks` | 任务列表（含进度计数） | ✅ | 同上 |
 | `GET` | `/api/tasks?withSubtasks=1` | 任务列表+子任务（面板水化） | ✅ | 同上 |
 | `GET` | `/api/tasks/:id` | 单任务+子任务 | ✅ | `api/tasks/[id]/route.ts` |
@@ -872,12 +887,11 @@ animation: `ganttGrow 0.9s cubic-bezier(.2,.8,.2,1) ${i * 0.12}s both`
 | 类别 | 要求 |
 |---|---|
 | **安全** | 所有 API 通过 `requireAuth` 鉴权；资源按 `userId` 严格隔离；Cron 通过 `CRON_SECRET` 鉴权 |
-| **AI 成本** | 通过 Eazo Creator Proxy（`EAZO_APP_AI_API_BASE`）路由，费用计入 Creator 积分；支持 `EAZO_AI_PROVIDER_MODE=byok` 切换自带密钥 |
+| **AI 成本** | 自托管默认 `byok` 模式：直连你的 OpenAI 兼容服务商，费用按 API Key 者所选服务商计费 |
 | **可用性** | 分析失败时 SSE 推送 `error` 事件，前端展示重试按钮；`AbortController` 防止重复请求 |
-| **移动端** | 使用 `100dvh` / `env(safe-area-inset-*)` 适配 Eazo Mobile WebView 安全区域 |
+| **移动端** | 使用 `100dvh` / `env(safe-area-inset-*)` 适配移动浏览器安全区域 |
 | **国际化** | 基础架构支持 `en-US` / `zh-CN`；当前界面文案为中文硬编码（非 i18n key） |
 | **数据持久化** | 每次登录自动从 DB 恢复历史任务到右侧面板 |
-| **Memory** | 分析成功后调用 `memory.reportAction({ content: "Goal analyzed: ..." })` 记录到 Eazo Gum |
 
 ---
 
@@ -887,10 +901,6 @@ animation: `ganttGrow 0.9s cubic-bezier(.2,.8,.2,1) ${i * 0.12}s both`
 |---|---|---|
 | `DATABASE_URL` | ✅ | PostgreSQL 连接串（自托管时自配） |
 | `AUTH_SECRET` | ✅ | JWT (HS256) 签名密钥，**≥ 32 字符**；缺失即启动报错。`openssl rand -hex 32` 生成 |
-| `EAZO_APP_AI_API_BASE` | ❌ | *（已替换）* 自托管不需要；`byok` 模式走 `AI_PROVIDER_BASE_URL` |
-| `EAZO_APP_ID` | ❌ | *（已替换）* 自托管不需要 |
-| `EAZO_AI_MODELS_JSON` | ❌ | *（已替换）* 自托管不需要 |
-| `EAZO_AI_MODEL_KEY` | ❌ | *（已替换）* 自托管使用 `AI_PROVIDER_MODEL` |
 | `EAZO_AI_PROVIDER_MODE` | ✅ | 自托管默认 `byok` |
 | `AI_PROVIDER_BASE_URL` / `AI_PROVIDER_API_KEY` / `AI_PROVIDER_MODEL` | ✅ | byok 模式下必填 |
 | `NEXT_PUBLIC_APP_TITLE` | ❌ | App 标题（默认 拾级） |
@@ -899,9 +909,11 @@ animation: `ganttGrow 0.9s cubic-bezier(.2,.8,.2,1) ${i * 0.12}s both`
 
 ---
 
-## 附录：AGENTS.md（完整原文）
+## 附录：历史 SDK 模板文档（已过期）
 
-> 以下为 `/home/user/autotask/AGENTS.md` 文件的完整内容，作为本 PRD 的技术规范附录。
+> **警告**：本附录是从 Eazo SDK 模板复制过来的英文使用说明，不代表当前仓库。
+> 当前项目已完全脱离 Eazo SDK （`@eazo/sdk` 以与 Eazo AI Gateway / Eazo Gum / Eazo Mobile WebView 都不再依赖），
+> 现状参考 [AGENTS.md](../AGENTS.md) §1、6 、 §11，本附录仅作为历史考验保留。
 
 ---
 
