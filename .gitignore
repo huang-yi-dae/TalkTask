@@ -195,3 +195,11 @@ dist
 /.workbuddy/
 /gen_brief.py
 /gradus.md
+
+# Temporary Codex verification artifacts
+/.codex/
+.codex-flow-test.mjs
+.codex-flow-test.spec.ts
+.codex-flow-test-err.log
+.codex-flow-test-out.log
+/package-lock.json

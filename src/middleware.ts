@@ -32,6 +32,8 @@ export const config = {
   ],
 };
 
+export const runtime = "nodejs";
+
 export async function middleware(request: NextRequest) {
   const token = readSessionCookieFromRequest(request);
   const decoded = token ? await verifySession(token) : null;
