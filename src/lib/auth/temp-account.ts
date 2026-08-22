@@ -1,4 +1,4 @@
-import { upsertUser } from "@/lib/db/queries";
+import { getUserById, upsertUser } from "@/lib/db/queries";
 import type { User } from "@/lib/db/schema";
 
 /**
@@ -25,7 +25,15 @@ export async function createTempAccount(): Promise<User> {
     passwordHash: "",
   });
 
-  return user;
+  if (user) {
+    return user;
+  }
+
+  // 如果 upsert 在并发/迁移差异场景下未返回行，回退按主键读取，避免把临时账号创建变成 500。
+  const existing = await getUserById(id);
+  if (existing) return existing;
+
+  throw new Error("createTempAccount: temp user insert returned no row");
 }
 
 /**

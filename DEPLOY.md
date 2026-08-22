@@ -156,7 +156,7 @@ NEXT_PUBLIC_APP_TITLE     拾级 · 学习规划智能体
 
 | 项 | 原来 | 现在 |
 |---|---|---|
-| 登录 | Eazo 平台 OAuth | 每个访客自动获得临时账号；可选注册/登录正式账号（`src/lib/auth/*` + `src/middleware.ts`） |
+| 登录 | Eazo 平台 OAuth | 每个访客自动获得临时账号；可选注册/登录正式账号（`src/lib/auth/*` + `src/proxy.ts`） |
 | 服务端鉴权 | `requireAuth` 验平台 token | JWT cookie（`__Host-session`，HS256）+ 临时账号兜底（`src/lib/auth/index.ts`） |
 | AI 分析 | SSE 逐字流式 | 缓冲式 JSON + 客户端阶段动画（规避代理层缓冲问题） |
 | AI 计费 | 走平台代理扣创作者额度 | BYOK 直连你自己的 OpenAI 兼容端点 |

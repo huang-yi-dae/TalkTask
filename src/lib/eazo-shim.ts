@@ -124,7 +124,17 @@ export const auth = {
     try {
       const res = await fetch("/api/auth/me", { cache: "no-store" });
       if (!res.ok) {
-        updateCurrentUser(null);
+        const prevUser = readCurrentUserSnapshot();
+        if (prevUser) {
+          try {
+            const cloned = await res.clone().json() as { error?: string };
+            if (cloned?.error === "账号不存在") {
+              updateCurrentUser(null);
+            }
+          } catch {
+            // 非 JSON 响应时保留旧 user，避免将有效登录态误清为空。
+          }
+        }
         return;
       }
       const json = (await res.json()) as { ok: boolean; user: CurrentUserView };

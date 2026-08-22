@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { auth } from "@/lib/eazo-shim";
+import { useRouter } from "next/navigation";
 import { useEazo } from "@/lib/eazo-shim";
 import { memory } from "@/lib/eazo-shim";
 import { AppAIClientUnavailableError } from "@/lib/api/app-ai-request";
@@ -10,17 +10,10 @@ import { request } from "@/lib/api/request";
 import { createTask } from "@/lib/api/tasks";
 import type { Subtask } from "@/lib/db/schema";
 import { AnalysisPanel } from "./analysis-panel";
-
-type Phase =
-  | "idle"
-  | "analyzing"
-  | "decomposing"
-  | "scheduling"
-  | "done"
-  | "error";
+import type { TaskPhase as FormPhase } from "./task-phase";
 
 interface AnalysisState {
-  phase: Phase;
+  phase: FormPhase;
   phaseLabel: string;
   subtasks: Subtask[];
   totalDays: number;
@@ -39,6 +32,21 @@ const INITIAL_STATE: AnalysisState = {
   errorMsg: "",
 };
 
+const PHASE_LABELS: Record<FormPhase, string> = {
+  idle: "",
+  analyzing: "解析目标…",
+  intent: "解析学习意图…",
+  search: "匹配学习资源…",
+  plan: "设计学习计划…",
+  validate: "核查可执行性…",
+  revise: "修订学习计划…",
+  decomposing: "拆解学习计划…",
+  scheduling: "安排学习排期…",
+  saving: "写入数据库并排期…",
+  done: "",
+  error: "",
+};
+
 export function TaskInputForm() {
   const router = useRouter();
   const user = useEazo((s) => s.auth.user);
@@ -48,7 +56,7 @@ export function TaskInputForm() {
   const [state, setState] = useState<AnalysisState>(INITIAL_STATE);
   const abortRef = useRef<AbortController | null>(null);
 
-  const isRunning = ["analyzing", "decomposing", "scheduling"].includes(
+  const isRunning = ["analyzing", "decomposing", "scheduling", "saving", "done"].includes(
     state.phase
   );
 
@@ -86,73 +94,43 @@ export function TaskInputForm() {
         throw new Error(txt || `HTTP ${res.status}`);
       }
 
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const msg = JSON.parse(line.slice(6)) as {
-              event: string;
-              data: unknown;
-            };
-            if (msg.event === "phase") {
-              const d = msg.data as { step: string; label: string };
-              setState((prev) => ({
-                ...prev,
-                phase: d.step as Phase,
-                phaseLabel: d.label,
-                taskId: task.id,
-              }));
-            } else if (msg.event === "delta") {
-              const d = msg.data as { content: string };
-              setState((prev) => ({
-                ...prev,
-                deltaLen: prev.deltaLen + (d.content?.length ?? 0),
-              }));
-            } else if (msg.event === "result") {
-              const d = msg.data as {
-                subtasks: Subtask[];
-                totalDays: number;
-              };
-              setState({
-                phase: "done",
-                phaseLabel: "",
-                subtasks: d.subtasks,
-                totalDays: d.totalDays,
-                taskId: task.id,
-                deltaLen: 0,
-                errorMsg: "",
-              });
-              memory
-                .reportAction({
-                  content: `User analyzed goal: "${goal.trim()}" — ${d.subtasks.length} subtasks generated`,
-                  event_type: "create",
-                })
-                .catch(() => {});
-            } else if (msg.event === "error") {
-              const d = msg.data as { message?: string };
-              console.error("[AutoTask] AI analysis error:", d);
-              setState((prev) => ({
-                ...prev,
-                phase: "error",
-                errorMsg: d.message || "AI 分析失败",
-              }));
-            }
-          } catch {
-            // skip malformed chunk
-          }
-        }
+      const json = (await res.json()) as {
+        ok: boolean;
+        result?: {
+          taskName?: string;
+          rawInput?: string;
+          subtasks?: Subtask[];
+          totalDays?: number;
+        };
+      };
+      if (!json.ok || !json.result) {
+        throw new Error("AI 分析未返回有效结果");
       }
+
+      const finishedPhase: FormPhase = "saving";
+      setState((prev) => ({
+        ...prev,
+        phase: finishedPhase,
+        phaseLabel: PHASE_LABELS[finishedPhase],
+        taskId: task.id,
+      }));
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      setState({
+        phase: "done",
+        phaseLabel: "",
+        subtasks: json.result.subtasks ?? [],
+        totalDays: json.result.totalDays ?? 0,
+        taskId: task.id,
+        deltaLen: 0,
+        errorMsg: "",
+      });
+      memory
+        .reportAction({
+          content: `User analyzed goal: "${goal.trim()}" — ${(json.result.subtasks ?? []).length} subtasks generated`,
+          event_type: "create",
+        })
+        .catch(() => {});
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (err instanceof AppAIClientUnavailableError) return;
@@ -263,3 +241,6 @@ export function TaskInputForm() {
     </div>
   );
 }
+
+
+

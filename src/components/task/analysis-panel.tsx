@@ -3,14 +3,9 @@
 import type { Subtask } from "@/lib/db/schema";
 import { useTranslation } from "react-i18next";
 import { GanttChart } from "./gantt-chart";
+import type { TaskPhase } from "./task-phase";
 
-type Phase =
-  | "idle"
-  | "analyzing"
-  | "decomposing"
-  | "scheduling"
-  | "done"
-  | "error";
+type Phase = TaskPhase;
 
 interface AnalysisPanelProps {
   phase: Phase;

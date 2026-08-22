@@ -6,7 +6,6 @@ import { getResolvedLocale } from "@/i18n";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useEazo } from "@/lib/eazo-shim";
-import { auth } from "@/lib/eazo-shim";
 import {
   getSubtasksWithTask, getTasksWithSubtasks,
   toggleSubtask, updateTaskStatusApi, postponeSubtask, unpostponeSubtask,
@@ -104,6 +103,7 @@ export function HomePage() {
   // 键盘导航当前选中的单个子任务（Space/↑↓ 的作用目标）
   const [activeSubtaskId, setActiveSubtaskId] = useState<string | null>(null);
   const [streakTick, setStreakTick] = useState(0);
+  const prevUserIdRef = useRef<string | null>(user?.id ?? null);
   // 待确认延迟的子任务（打开确认弹窗）
   const [postponeTarget, setPostponeTarget] = useState<SubtaskWithTask | null>(null);
   // 轻量 Toast 提示（失败提示 / 撤销等）
@@ -135,26 +135,60 @@ export function HomePage() {
   }, []);
 
   useEffect(() => {
-    // 登出时清空列表，仅在 user 变为空时触发一次，无级联循环
+    const prevId = prevUserIdRef.current;
+    const mode = !prevId && user ? "LOGIN"
+      : prevId && !user ? "LOGOUT"
+      : prevId && user ? "CHANGE"
+      : "LOGOUT";
+
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!user) { setSubtaskRows([]); return; }
+    if (mode === "LOGOUT") { setSubtaskRows([]); return; }
     loadSubtasks();
   }, [user, loadSubtasks]);
 
-  // Hydrate right panel with historical tasks on login
   useEffect(() => {
-    if (!user) return;
-    getTasksWithSubtasks().then((tasks) => hydrateFromDB(tasks)).catch(() => {});
-  }, [user, hydrateFromDB]);
+    prevUserIdRef.current = user?.id ?? null;
+  }, [user?.id]);
+
+  // 仅在没有正在进行中的请求时，用后台静默刷新左侧列表，避免分析中整表闪烁。
+  const refreshSubtasksIfIdle = useCallback(async () => {
+    if (fetching) return;
+    loadSubtasks();
+  }, [fetching, loadSubtasks]);
 
   // Refresh left list when analysis completes
   useEffect(() => {
     const done = entries.some((e) => e.stream.phase === "done");
-    // 分析完成后刷新左侧列表；由 phase 变化驱动，非同步级联
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (done && user) loadSubtasks();
+    if (done && user) refreshSubtasksIfIdle();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries.map((e) => e.stream.phase).join(",")]);
+  }, [entries.map((e) => e.stream.phase).join(","), user]);
+
+  const prevHydratedUserRef = useRef<string | null>(null);
+
+  // Hydrate right panel with historical tasks on login
+  useEffect(() => {
+    if (!user) return;
+    if (prevHydratedUserRef.current === user.id) return;
+    prevHydratedUserRef.current = user.id;
+    getTasksWithSubtasks().then((tasks) => hydrateFromDB(tasks)).catch(() => {});
+  }, [user?.id, hydrateFromDB]);
+
+  const prevTaskIdRef = useRef<string | null>(null);
+
+  // 分析完成且后台无正在进行的列表请求时，额外静默刷新一次，避免只靠局部乐观更新导致两侧数据不一致。
+  useEffect(() => {
+    const done = entries.some((e) => e.stream.phase === "done");
+    const focused = entries.find((e) => e.taskId === focusedId);
+    const doneId = done && focused ? focused.taskId : null;
+    if (doneId && doneId !== prevTaskIdRef.current) {
+      prevTaskIdRef.current = doneId;
+      refreshSubtasksIfIdle();
+    } else if (!doneId) {
+      prevTaskIdRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+  }, [entries.map((e) => e.stream.phase).join(","), focusedId, user, entries, refreshSubtasksIfIdle]);
 
   const handleToggleSubtask = useCallback(async (taskId: string, subtaskId: string, current: boolean, silent = false) => {
     const next = !current;

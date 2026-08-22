@@ -87,7 +87,7 @@
 3. 按 Enter 或点击「开始分析 →」
 4. 弹窗立即关闭；右侧面板新增一个标签页，AI 分析实时开始
 
-#### 3.2.2 AI 4段分析 Pipeline（`POST /api/tasks/:id/analyze`，SSE 流）
+#### 3.2.2 AI 4段分析 Pipeline（`POST /api/tasks/:id/analyze`，缓冲 JSON）
 
 | 阶段 | 标识 | 描述 | AI 输出字段 |
 |---|---|---|---|
@@ -245,7 +245,7 @@ SSE 推送 "result" 事件 → 前端 getTask() 加载完整数据
        │
        ▼
 regenAnalysis(taskId, adjustment)
-  - 中止当前 SSE（AbortController.abort()）
+  - 中止当前分析请求（AbortController.abort()）
   - 重置 entry.stream → INIT_STREAM
   - 重置 entry.task → null
        │
@@ -458,7 +458,7 @@ src/
 | `GET` | `/api/tasks/:id` | 单任务+子任务 | ✅ | `api/tasks/[id]/route.ts` |
 | `PATCH` | `/api/tasks/:id` | 更新 status | ✅ | 同上 |
 | `DELETE` | `/api/tasks/:id` | 删除任务（级联子任务） | ✅ | 同上 |
-| `POST` | `/api/tasks/:id/analyze` | 4段AI Pipeline（SSE） | ✅ | `api/tasks/[id]/analyze/route.ts` |
+| `POST` | `/api/tasks/:id/analyze` | 4段AI Pipeline（缓冲 JSON） | ✅ | `api/tasks/[id]/analyze/route.ts` |
 | `PATCH` | `/api/tasks/:id/subtasks/:sid` | 切换子任务完成状态 | ✅ | `api/tasks/[id]/subtasks/[subtaskId]/route.ts` |
 | `GET` | `/api/subtasks` | 全量子任务+大任务JOIN | ✅ | `api/subtasks/route.ts` |
 | `GET` | `/api/user/profile` | 获取/创建用户 | ✅ | `api/user/profile/route.ts` |
@@ -480,30 +480,30 @@ src/
 ?withSubtasks=1: TaskWithSubtasksFull[] （含 subtasks: Subtask[]）
 ```
 
-#### `POST /api/tasks/:id/analyze` — SSE 事件序列
+#### `POST /api/tasks/:id/analyze` — 缓冲 JSON 响应
 
 ```
 Content-Type: text/event-stream
 
-data: {"event":"phase","data":{"step":"intent","label":"// 阶段 1/4 · 解析学习意图…"}}
-data: {"event":"delta","data":{"stage":"intent","content":"{"}}
+{"phase":"intent","label":"// 阶段 1/4 · 解析学习意图…"}
+{"delta":"{"}
 ...（流式 token）
-data: {"event":"intent_done","data":{"taskName":"Python基础入门","domain":"Python编程","topicCategory":"编程"}}
+{"intent_done":{"taskName":"Python基础入门","domain":"Python编程","topicCategory":"编程"}}
 
-data: {"event":"phase","data":{"step":"search","label":"// 阶段 2/4 · 搜索学习资源…"}}
-data: {"event":"delta","data":{"stage":"search","content":"..."}}
-data: {"event":"search_done","data":{"resourceCount":6}}
+{"phase":"search","label":"// 阶段 2/4 · 搜索学习资源…"}
+{"delta":"..."}
+{"search_done":{"resourceCount":6}}
 
-data: {"event":"phase","data":{"step":"plan","label":"// 阶段 3/4 · 制定学习计划…"}}
+{"phase":"plan","label":"// 阶段 3/4 · 制定学习计划…"}
 data: {"event":"delta","data":{"stage":"plan","content":"..."}}
 
-data: {"event":"phase","data":{"step":"validate","label":"// 阶段 4/4 · 核查计划可执行性…"}}
+{"phase":"validate","label":"// 阶段 4/4 · 核查计划可执行性…"}
 # 若 pass=false:
-data: {"event":"phase","data":{"step":"revise","label":"// 核查未通过，优化计划…"}}
+{"phase":"revise","label":"// 核查未通过，优化计划…"}
 
-data: {"event":"phase","data":{"step":"saving","label":"// 写入数据库 · 全局排期计算…"}}
-data: {"event":"phase","data":{"step":"done","label":"// 全部完成 ✓"}}
-data: {"event":"result","data":{
+{"phase":"saving","label":"// 写入数据库 · 全局排期计算…"}
+{"phase":"done","label":"// 全部完成 ✓"}
+{"result":{
   "subtasks": [...],
   "totalDays": 14,
   "taskName": "Python基础入门",
@@ -512,7 +512,7 @@ data: {"event":"result","data":{
   "topicCategory": "编程"
 }}
 # 出错时:
-data: {"event":"error","data":{"message":"AI 分析失败: ..."}}
+{"error":{"message":"AI 分析失败: ..."}}
 ```
 
 #### `GET /api/subtasks` 响应结构（`SubtaskWithTask[]`）
@@ -698,7 +698,7 @@ function computeNewTaskStartDate(existingTasks, today) {
 // dailyTopicMap: Map<dateStr, Map<topicCategory, count>>
 ```
 
-### 8.3 SSE 流消费（`right-panel.tsx: useAnalysisPanel`）
+### 8.3 分析进度展示（`right-panel.tsx: useAnalysisPanel`）
 
 ```typescript
 // SSE 解析循环
@@ -775,7 +775,7 @@ interface AnalysisEntry {
   taskTitle:     string            // intent_done 后更新为 AI 名称
   rawInput:      string            // 永不覆盖的原始输入
   topicCategory: string | undefined
-  stream:        StreamState       // SSE 状态
+  stream:        StreamState       // 客户端本地分析状态
   task:          TaskWithSubtasks|null  // result 后加载
 }
 
@@ -864,7 +864,7 @@ animation: `ganttGrow 0.9s cubic-bezier(.2,.8,.2,1) ${i * 0.12}s both`
 | 原则 | 实现 |
 |---|---|
 | **弹窗优于跳转** | 子任务所有操作在当前页完成，减少上下文切换 |
-| **实时反馈** | SSE 流 + PipelineSteps，用户清楚 AI 在做什么 |
+| **实时反馈** | PipelineSteps + 本地 ticker，用户清楚 AI 在做什么 |
 | **乐观更新** | 勾选子任务即时响应，后台异步同步 |
 | **高亮即导航** | 右侧点击 → 左侧自动筛选并高亮，3秒后还原 |
 | **完成即庆祝** | 恭喜弹窗提供正向反馈，增强学习动力 |
@@ -888,7 +888,7 @@ animation: `ganttGrow 0.9s cubic-bezier(.2,.8,.2,1) ${i * 0.12}s both`
 |---|---|
 | **安全** | 所有 API 通过 `requireAuth` 鉴权；资源按 `userId` 严格隔离；Cron 通过 `CRON_SECRET` 鉴权 |
 | **AI 成本** | 自托管默认 `byok` 模式：直连你的 OpenAI 兼容服务商，费用按 API Key 者所选服务商计费 |
-| **可用性** | 分析失败时 SSE 推送 `error` 事件，前端展示重试按钮；`AbortController` 防止重复请求 |
+| **可用性** | 分析失败时展示重试按钮；`AbortController` 防止重复请求 |
 | **移动端** | 使用 `100dvh` / `env(safe-area-inset-*)` 适配移动浏览器安全区域 |
 | **国际化** | 基础架构支持 `en-US` / `zh-CN`；当前界面文案为中文硬编码（非 i18n key） |
 | **数据持久化** | 每次登录自动从 DB 恢复历史任务到右侧面板 |

@@ -31,7 +31,7 @@ export async function countRecentAttempts(
       and(
         eq(authAttempts.ip, ip),
         eq(authAttempts.kind, kind),
-        gt(authAttempts.attemptedAt, sql`NOW() - (${windowSeconds} || ' seconds')::interval`),
+        gt(authAttempts.attemptedAt, sql`NOW() - (${String(windowSeconds)} || ' seconds')::interval`),
       ),
     );
   return rows[0]?.count ?? 0;
@@ -39,7 +39,8 @@ export async function countRecentAttempts(
 
 /** 清掉所有早于给定秒数之前的尝试（窗口前置清理）。 */
 export async function pruneOldAttempts(windowSeconds = 60): Promise<void> {
-  await db.execute(
-    sql`DELETE FROM auth_attempts WHERE attempted_at < NOW() - (${windowSeconds} || ' seconds')::interval`,
-  );
+  await db.execute(sql`
+    DELETE FROM auth_attempts
+     WHERE attempted_at < NOW() - (${String(windowSeconds)} || ' seconds')::interval
+  `);
 }

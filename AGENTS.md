@@ -56,7 +56,7 @@ src/
   components/
     auth/        auth-modal / global-auth-modal（全局唯一登录注册弹窗，挂载于 layout）
     home/        home-page / new-task-input / subtask-row / subtask-detail-modal / congrats-modal / right-panel
-    task/        gantt-chart / task-detail-page-v2
+    task/        task-input-form / task-phase / analysis-panel / gantt-chart / task-detail-page-v2
     history/     history-page
     user-profile/ user-badge / user-sync-effect
     i18n/        i18n-provider / language-switcher / locale-sync-effect
@@ -64,7 +64,7 @@ src/
   lib/
     ai/prompts.ts        INTENT / RESOURCE_INTENT / PLAN / VALIDATE 提示词
     api/                 request / tasks / user-profile / app-ai-request / index
-    auth/                index.ts(jwt cookie) / env / jwt / password / cookie / temp-account / ratelimit / current-user / user-provider
+    auth/                index.ts(jwt cookie) / env / jwt / password / cookie / temp-account / ratelimit / current-user / user-provider / auth-attempts
     db/                  schema(tasks,subtasks,users,auth-attempts) / queries / client / migrate / migrations/
     eazo-ai-billing.ts   appAi 客户端（byok / creator proxy）
     eazo-shim.ts         EazoProvider / auth / memory / useEazo 兼容层（读 UserProvider）

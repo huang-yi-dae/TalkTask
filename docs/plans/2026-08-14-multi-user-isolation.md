@@ -69,7 +69,7 @@
 ### 整体架构
 
 - **三层鉴权边界**：
-  1. **Edge / Server Middleware**（`src/middleware.ts`）—— 统一在 `/api/*` 入口做 cookie 校验、必要时建临时账号、必要时续期 cookie。**未登录访问任何受保护 API 时自动获得临时账号**，handler 内部无需关心"用户有没有登录"。
+  1. **Edge / Server Middleware**（`src/proxy.ts`）—— 统一在 `/api/*` 入口做 cookie 校验、必要时建临时账号、必要时续期 cookie。**未登录访问任何受保护 API 时自动获得临时账号**，handler 内部无需关心"用户有没有登录"。
   2. **Server-side `requireAuth(request)`**（`src/lib/auth/index.ts`）—— 解析 cookie → JWT 验证 → 查 users 表 → 返回 `{ ok, user, userId }` 或抛 401。是所有受保护路由 handler 的标准入口。
   3. **Client-side `<UserProvider>`**（`src/lib/auth/user-provider.tsx` + `src/app/layout.tsx`）—— 在 RSC 阶段直接调用 `getCurrentUser(request)`，把当前用户作为 props 注入根布局；客户端通过 Context 拿到，**首屏零闪烁**。
 
@@ -161,7 +161,7 @@
 
 1. **Phase 1 · Schema** —— 加 `passwordHash` / `emailLower` / `auth_attempts` 表，生成并执行迁移。**不动任何其他代码**。
 2. **Phase 2 · 服务端 auth lib** —— 新建 `jwt.ts` / `password.ts` / `cookie.ts` / `temp-account.ts` / `ratelimit.ts` / `current-user.ts`，纯函数层不挂 HTTP。
-3. **Phase 3 · requireAuth + middleware** —— `requireAuth` 切到 JWT；新建 `src/middleware.ts`，自动建临时账号；scheduler 同步修。
+3. **Phase 3 · requireAuth + middleware** —— `requireAuth` 切到 JWT；新建 `src/proxy.ts`，自动建临时账号；scheduler 同步修。
 4. **Phase 4 · 公开 auth API** —— 4 个新路由（register/login/logout/me）。
 5. **Phase 5 · 客户端 auth store + `<UserProvider>`** —— `eazo-shim.ts` 重写；根布局 RSC 注入；删除 `UserSyncEffect`。
 6. **Phase 6 · UI 登录/注册 modal** —— 在用户徽章区加按钮，触发 modal，吐司提示。
