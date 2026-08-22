@@ -61,12 +61,16 @@ async function callAI(
       { role: "user", content: userMessage },
     ],
     stream: true,
-    max_tokens: 2500,
+    // Reasoning models (e.g. deepseek-v4-flash) spend token budget on
+    // reasoning_content first, then populate content. 2500 was too low —
+    // the model exhausted tokens on reasoning and never produced content.
+    // Make configurable; default 8000 covers reasoning + JSON output.
+    max_tokens: Number(process.env.AI_MAX_TOKENS) || 8000,
   });
 
   let accumulated = "";
   for await (const chunk of stream) {
-    const delta = chunk.choices[0]?.delta?.content ?? "";
+    const delta = chunk.choices?.[0]?.delta?.content ?? "";
     if (delta) {
       accumulated += delta;
       onDelta?.(delta);
@@ -359,9 +363,11 @@ export async function POST(
     });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
-    console.error("[AutoTask] analyze pipeline error:", errMsg);
+    const errStack = err instanceof Error ? err.stack : undefined;
+    console.error("[AutoTask] analyze pipeline error:", errMsg, errStack);
+    // Surface the real error in the response for diagnosis (self-hosted, no PII).
     return NextResponse.json(
-      { ok: false, error: "分析未能完成，请稍后重试" },
+      { ok: false, error: "分析未能完成，请稍后重试", debug: errMsg },
       { status: 500 },
     );
   } finally {

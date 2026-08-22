@@ -33,8 +33,19 @@ const client =
   globalForDb.__autotaskSql ??
   postgres(connectionString, {
     max: 1,
-    idle_timeout: 300,        // 覆盖 analyze 路由最长 300s 的 AI Pipeline
+    // IMPORTANT: `idle_timeout` is the time a connection may sit IDLE (no query
+    // in flight) before postgres.js closes it. The analyze route runs several
+    // long sequential AI calls (intent/resources/plan/validate) with NO db
+    // query between them — so the pooled connection goes "idle" for the whole
+    // AI phase and gets reaped. The subsequent write then throws
+    // "Connection terminated" and the pipeline fails at the DB-write step.
+    // Set to 0 to disable idle reaping; Neon's server-side pooler tolerates
+    // this fine for a single-socket serverless client.
+    idle_timeout: 0,
     connect_timeout: 15,
+    // max_lifetime: hard cap on connection age (s) — 0 disables. Guards against
+    // the pooler silently dropping very old sockets mid-request.
+    max_lifetime: 0,
     prepare: false,
   });
 
