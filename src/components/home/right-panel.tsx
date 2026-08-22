@@ -129,7 +129,16 @@ export function useAnalysisPanel() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(adjustment ? { adjustment } : {}), signal: ctrl.signal,
       });
-      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+      if (!res.ok) {
+        // 解析后端 JSON 错误体，给出可读的中文提示，而不是把整段 JSON 暴露给用户。
+        const raw = (await res.text()) || "";
+        let friendly = raw;
+        try {
+          const body = JSON.parse(raw) as { error?: string; message?: string };
+          friendly = body.error || body.message || raw;
+        } catch { /* 非 JSON 则原样展示 */ }
+        throw new Error(friendly || `HTTP ${res.status}`);
+      }
 
       const json = (await res.json()) as {
         ok: boolean;

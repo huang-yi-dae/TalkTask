@@ -134,6 +134,10 @@ export function HomePage() {
     finally { setFetching(false); }
   }, []);
 
+  // 依赖用 user?.id（稳定字符串）而非 user 对象本身：
+  // useEazo 每次渲染都重建 user 对象（adaptUser 返回新引用），
+  // 若直接依赖 user，effect 会在每次渲染后都重跑，形成“渲染→拉取→setState→渲染”死循环，
+  // 表现为左侧列表频闪、疯狂轮询 /api/subtasks、并误报“网络/服务异常”。
   useEffect(() => {
     const prevId = prevUserIdRef.current;
     const mode = !prevId && user ? "LOGIN"
@@ -144,7 +148,7 @@ export function HomePage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (mode === "LOGOUT") { setSubtaskRows([]); return; }
     loadSubtasks();
-  }, [user, loadSubtasks]);
+  }, [user?.id, loadSubtasks]);
 
   useEffect(() => {
     prevUserIdRef.current = user?.id ?? null;
@@ -162,7 +166,7 @@ export function HomePage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (done && user) refreshSubtasksIfIdle();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries.map((e) => e.stream.phase).join(","), user]);
+  }, [entries.map((e) => e.stream.phase).join(","), user?.id]);
 
   const prevHydratedUserRef = useRef<string | null>(null);
 
@@ -188,7 +192,7 @@ export function HomePage() {
       prevTaskIdRef.current = null;
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect
-  }, [entries.map((e) => e.stream.phase).join(","), focusedId, user, entries, refreshSubtasksIfIdle]);
+  }, [entries.map((e) => e.stream.phase).join(","), focusedId, user?.id, entries, refreshSubtasksIfIdle]);
 
   const handleToggleSubtask = useCallback(async (taskId: string, subtaskId: string, current: boolean, silent = false) => {
     const next = !current;

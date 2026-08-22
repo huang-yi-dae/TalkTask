@@ -14,6 +14,8 @@ export function HistoryPage() {
   // fetching 初始 false，等用户已登录再置 true，避免闪烁
   const [fetching, setFetching] = useState(false);
 
+  // 依赖 user?.id（稳定字符串）而非 user 对象：useEazo 每次渲染重建 user 引用，
+  // 直接依赖 user 会导致 effect 在每次渲染后重跑，形成无限拉取循环（频闪 + 误报网络异常）。
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -29,7 +31,7 @@ export function HistoryPage() {
     }
     load();
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user?.id]);
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();

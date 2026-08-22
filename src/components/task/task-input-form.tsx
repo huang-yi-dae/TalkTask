@@ -90,8 +90,13 @@ export function TaskInputForm() {
       });
 
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || `HTTP ${res.status}`);
+        const raw = await res.text();
+        let friendly = raw;
+        try {
+          const body = JSON.parse(raw) as { error?: string; message?: string };
+          friendly = body.error || body.message || raw;
+        } catch { /* 非 JSON 原样展示 */ }
+        throw new Error(friendly || `HTTP ${res.status}`);
       }
 
       const json = (await res.json()) as {

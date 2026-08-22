@@ -21,7 +21,7 @@
   - `EazoProvider`：纯 passthrough（直接返回 children）。
   - `auth`：单例。`login(mode?)` 触发全局 `<AuthModal>`（注册/登录弹窗），不再直接发网络请求；`logout()` 调 `/api/auth/logout` 并清本地 user；`refresh()` 重新拉 `/api/auth/me` 同步 user。
   - `memory`：`reportAction()` 为 no-op（平台长期记忆在站外不可用）。
-  - `useEazo(selector)`：从 `<UserProvider>` 读真实 user。
+  - `useEazo(selector)`：从 `<UserProvider>` 注入的模块级 store 读真实 user。`adaptUser` 按 `id/email/name` **缓存同一对象引用**，所以 `useEazo(s => s.auth.user)` 在同用户下返回稳定引用。⚠️ 把 `user` 对象直接放进 `useEffect` 依赖数组仍是大忌——务必依赖 `user?.id`（稳定字符串），否则任一上下文 hook 返回新引用都会触发无限重拉循环（history/home/task-detail 均已踩过）。
   - **真实登录态**：每个访客都是 JWT cookie 解析出的独立 user；没有 cookie 时由 middleware 兜底建临时账号。
 - **`src/lib/auth/index.ts`** — 替换 `@eazo/sdk/server` 的 `requireAuth`：解析 `__Host-session` cookie → JWT 校验 → 查 users → 返回 `{ ok, user, userId }`。所有受保护路由第一行调用 `await requireAuth(request)`。
 - **`src/lib/eazo-ai-billing.ts`** — `appAi.chat()` 客户端，两种模式：

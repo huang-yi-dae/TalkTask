@@ -32,9 +32,28 @@ export type CurrentUserView = {
  * filled with safe placeholders; nothing in the UI currently reads them off
  * this path.
  */
+// 缓存上一次适配结果，按 id/email/name 判定是否复用同一对象引用。
+// 关键：useEazo(s => s.auth.user) 在每次渲染都会调用 adaptUser，若不缓存，
+// 每次都返回新 User 对象 → 所有把 user 放进 useEffect 依赖数组的组件都会在
+// 每次渲染后重跑 effect，形成“渲染→拉取→setState→渲染”的无限循环
+// （表现为左侧列表/进度频闪、疯狂轮询 /api/subtasks、误报网络异常）。
+let cachedUserView: CurrentUserView | null = null;
+let cachedUser: User | null = null;
+
 function adaptUser(view: CurrentUserView | null): User | null {
-  if (!view) return null;
-  return {
+  if (view === null) {
+    cachedUserView = null;
+    cachedUser = null;
+    return null;
+  }
+  const same =
+    cachedUserView !== null &&
+    cachedUserView.id === view.id &&
+    cachedUserView.email === view.email &&
+    cachedUserView.name === view.name;
+  if (same) return cachedUser;
+  cachedUserView = view;
+  cachedUser = {
     id: view.id,
     email: view.email,
     name: view.name,
@@ -44,6 +63,7 @@ function adaptUser(view: CurrentUserView | null): User | null {
     createdAt: new Date(0),
     updatedAt: new Date(0),
   };
+  return cachedUser;
 }
 
 type EazoState = {

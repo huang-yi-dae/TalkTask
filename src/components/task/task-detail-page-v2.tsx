@@ -20,6 +20,8 @@ export function TaskDetailPage({ taskId }: TaskDetailPageProps) {
   const totalCount = task?.subtasks.length ?? 0;
   const progressPct = totalCount > 0 ? completedCount / totalCount : 0;
 
+  // 依赖 user?.id（稳定字符串）而非 user 对象：useEazo 每次渲染重建 user 引用，
+  // 直接依赖 user 会让 effect 在每次渲染后重跑，形成无限拉取循环（频闪 + 误报网络异常）。
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -27,7 +29,7 @@ export function TaskDetailPage({ taskId }: TaskDetailPageProps) {
       .then((data) => { if (!cancelled) { setFetching(false); setTask(data); } })
       .catch((e) => { if (!cancelled) { setFetching(false); setError(e.message); } });
     return () => { cancelled = true; };
-  }, [taskId, user]);
+  }, [taskId, user?.id]);
 
   const handleToggle = useCallback(
     async (subtaskId: string, current: boolean) => {
